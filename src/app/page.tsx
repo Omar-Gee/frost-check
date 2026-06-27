@@ -1,65 +1,203 @@
-import Image from "next/image";
+"use client";
 
-export default function Home() {
+import dynamic from "next/dynamic";
+import { useCallback, useEffect, useState } from "react";
+import { Loader2, Map, List, LocateFixed, Snowflake } from "lucide-react";
+import { PlaceCard } from "@/components/places/PlaceCard";
+import {
+  PlaceFilters,
+  type PlaceFiltersState,
+} from "@/components/places/PlaceFilters";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Button } from "@/components/ui/button";
+import type { PlaceWithScore } from "@/lib/places/queries";
+import { NL_CITIES } from "@/lib/osm/nl-cities";
+
+const PlacesMap = dynamic(
+  () => import("@/components/map/PlacesMap").then((m) => m.PlacesMap),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="flex h-[400px] items-center justify-center rounded-xl bg-frost-50">
+        <Loader2 className="h-8 w-8 animate-spin text-frost-500" />
+      </div>
+    ),
+  }
+);
+
+const DEFAULT_CENTER = { lat: 52.3676, lng: 4.9041 };
+
+export default function HomePage() {
+  const [places, setPlaces] = useState<PlaceWithScore[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [location, setLocation] = useState(DEFAULT_CENTER);
+  const [locationLabel, setLocationLabel] = useState("Amsterdam");
+  const [view, setView] = useState<"list" | "map">("list");
+  const [filters, setFilters] = useState<PlaceFiltersState>({
+    amenity: "",
+    minScore: "",
+    radius: "2",
+  });
+
+  const fetchPlaces = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+
+    const params = new URLSearchParams({
+      lat: String(location.lat),
+      lng: String(location.lng),
+      radius: filters.radius || "2",
+    });
+    if (filters.amenity) params.set("amenity", filters.amenity);
+    if (filters.minScore) params.set("minScore", filters.minScore);
+
+    try {
+      const res = await fetch(`/api/places/nearby?${params}`);
+      if (!res.ok) throw new Error("Could not load places");
+      const data = await res.json();
+      setPlaces(data.places ?? []);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Unknown error");
+      setPlaces([]);
+    } finally {
+      setLoading(false);
+    }
+  }, [location, filters]);
+
+  useEffect(() => {
+    fetchPlaces();
+  }, [fetchPlaces]);
+
+  function useGeolocation() {
+    if (!navigator.geolocation) {
+      setError("Geolocation is not supported by your browser");
+      return;
+    }
+
+    setLoading(true);
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        setLocation({ lat: pos.coords.latitude, lng: pos.coords.longitude });
+        setLocationLabel("Your location");
+        setLoading(false);
+      },
+      () => {
+        setError("Could not determine your location");
+        setLoading(false);
+      }
+    );
+  }
+
+  function selectCity(slug: string) {
+    const city = NL_CITIES.find((c) => c.slug === slug);
+    if (city) {
+      setLocation({ lat: city.lat, lng: city.lng });
+      setLocationLabel(city.name);
+    }
+  }
+
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
+    <div className="space-y-6">
+      <section className="rounded-xl bg-gradient-to-br from-frost-600 to-frost-800 p-6 text-white">
+        <div className="flex items-center gap-3">
+          <Snowflake className="h-8 w-8" />
+          <div>
+            <h1 className="text-2xl font-bold">Find cool places near you</h1>
+            <p className="text-frost-100">
+              Discover cafes, restaurants, and other spots with air conditioning
+              in the Netherlands.
+            </p>
+          </div>
         </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
+      </section>
+
+      <section className="space-y-4">
+        <div className="flex flex-wrap items-center gap-2">
+          <Button variant="secondary" size="sm" onClick={useGeolocation}>
+            <LocateFixed className="h-4 w-4" />
+            Use my location
+          </Button>
+          {NL_CITIES.map((city) => (
+            <Button
+              key={city.slug}
+              variant="outline"
+              size="sm"
+              onClick={() => selectCity(city.slug)}
+            >
+              {city.name}
+            </Button>
+          ))}
+        </div>
+        <p className="text-sm text-frost-600">
+          Current location: <strong>{locationLabel}</strong>
+        </p>
+
+        <PlaceFilters filters={filters} onChange={setFilters} />
+
+        <Tabs value={view} onValueChange={(v) => setView(v as "list" | "map")}>
+          <TabsList>
+            <TabsTrigger value="list">
+              <List className="mr-1 h-4 w-4" />
+              List
+            </TabsTrigger>
+            <TabsTrigger value="map">
+              <Map className="mr-1 h-4 w-4" />
+              Map
+            </TabsTrigger>
+          </TabsList>
+
+          <TabsContent value="list">
+            {loading && (
+              <div className="flex items-center justify-center py-12">
+                <Loader2 className="h-8 w-8 animate-spin text-frost-500" />
+              </div>
+            )}
+            {error && (
+              <p className="rounded-lg bg-red-50 p-4 text-sm text-red-700">
+                {error}
+              </p>
+            )}
+            {!loading && !error && places.length === 0 && (
+              <div className="rounded-xl border border-dashed border-frost-300 p-8 text-center">
+                <p className="font-medium text-frost-800">
+                  No places found
+                </p>
+                <p className="mt-2 text-sm text-frost-600">
+                  Run <code className="rounded bg-frost-100 px-1">npm run index:nl</code> first
+                  to index places, or increase the search radius.
+                </p>
+              </div>
+            )}
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              {places.map((place) => (
+                <PlaceCard key={place.id} place={place} />
+              ))}
+            </div>
+          </TabsContent>
+
+          <TabsContent value="map">
+            <PlacesMap
+              places={places}
+              center={[location.lat, location.lng]}
+              userLocation={location}
             />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
-        </div>
-      </main>
+          </TabsContent>
+        </Tabs>
+      </section>
+
+      <footer className="border-t border-frost-200 pt-4 text-xs text-frost-500">
+        Map data ©{" "}
+        <a
+          href="https://www.openstreetmap.org/copyright"
+          className="underline"
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          OpenStreetMap
+        </a>{" "}
+        contributors
+      </footer>
     </div>
   );
 }

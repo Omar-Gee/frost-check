@@ -1,26 +1,58 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --background: #f0f9ff;
+  --foreground: #0c4a6e;
+  --frost-50: #f0f9ff;
+  --frost-100: #e0f2fe;
+  --frost-200: #bae6fd;
+  --frost-300: #7dd3fc;
+  --frost-400: #38bdf8;
+  --frost-500: #0ea5e9;
+  --frost-600: #0284c7;
+  --frost-700: #0369a1;
+  --frost-800: #075985;
+  --frost-900: #0c4a6e;
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+  --color-frost-50: var(--frost-50);
+  --color-frost-100: var(--frost-100);
+  --color-frost-200: var(--frost-200);
+  --color-frost-300: var(--frost-300);
+  --color-frost-400: var(--frost-400);
+  --color-frost-500: var(--frost-500);
+  --color-frost-600: var(--frost-600);
+  --color-frost-700: var(--frost-700);
+  --color-frost-800: var(--frost-800);
+  --color-frost-900: var(--frost-900);
 }
 
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+}
+
+.leaflet-container {
+  font-family: inherit;
+  height: 100%;
+  width: 100%;
+  background: #e0f2fe;
+  z-index: 0;
+}
+
+.leaflet-tile-pane {
+  z-index: 1;
+}
+
+.leaflet-marker-pane,
+.leaflet-popup-pane {
+  z-index: 2;
+}
+
+.custom-marker {
+  background: transparent !important;
+  border: none !important;
 }
