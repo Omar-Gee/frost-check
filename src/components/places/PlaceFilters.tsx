@@ -39,7 +39,7 @@ export function PlaceFilters({ filters, onChange }: PlaceFiltersProps) {
           id="amenity"
           value={filters.amenity}
           onChange={(e) => onChange({ ...filters, amenity: e.target.value })}
-          className="mt-1 flex h-10 w-full rounded-lg border border-frost-300 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-frost-500"
+          className="mt-1 flex h-10 w-full rounded-lg border border-frost-300 bg-card px-3 text-sm text-frost-900 focus:outline-none focus:ring-2 focus:ring-frost-500"
         >
           <option value="">All types</option>
           {AMENITY_TYPES.map((a) => (

@@ -56,7 +56,7 @@ function TabsTrigger({ value, className, ...props }: TabsTriggerProps) {
       className={cn(
         "inline-flex items-center justify-center whitespace-nowrap rounded-md px-3 py-1.5 text-sm font-medium transition-all",
         active
-          ? "bg-white text-frost-900 shadow-sm"
+          ? "bg-card text-frost-900 shadow-sm"
           : "text-frost-600 hover:text-frost-900",
         className
       )}

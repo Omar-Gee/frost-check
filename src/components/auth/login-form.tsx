@@ -65,7 +65,7 @@ export function LoginForm({
       </div>
 
       {errorMessage && (
-        <p className="rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700">
+        <p className="rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700 dark:bg-red-950/40 dark:text-red-300">
           {errorMessage}
         </p>
       )}
@@ -110,7 +110,7 @@ export function LoginForm({
       {showDevLogin && (
         <form
           onSubmit={handleCredentials}
-          className="space-y-4 rounded-xl border border-frost-200 bg-white p-6"
+          className="space-y-4 rounded-xl border border-frost-200 bg-card p-6"
         >
           <div className="flex items-center gap-2 text-sm font-medium text-frost-700">
             <Mail className="h-4 w-4" />
@@ -158,7 +158,7 @@ export function LoginForm({
       )}
 
       {!showDevLogin && !hasGoogle && !hasGitHub && (
-        <p className="rounded-lg bg-amber-50 px-4 py-3 text-sm text-amber-800">
+        <p className="rounded-lg bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:bg-amber-950/40 dark:text-amber-200">
           No sign-in method configured. Add OAuth keys in{" "}
           <code className="rounded bg-amber-100 px-1">.env.local</code>.
         </p>

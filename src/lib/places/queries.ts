@@ -1,4 +1,4 @@
-import { and, desc, eq, gte, inArray, lte } from "drizzle-orm";
+import { and, desc, eq, gte, inArray, like, lte, or } from "drizzle-orm";
 import { getDb } from "@/lib/db/client";
 import { boundingBox, haversineKm, type BoundingBox } from "@/lib/db/geo";
 import { places, reviewScores, userRatings, users } from "@/lib/db/schema";
@@ -192,6 +192,83 @@ export async function getNearbyPlaces(
   }
 
   return results;
+}
+
+export async function searchPlaces(
+  query: string,
+  options?: {
+    lat?: number;
+    lng?: number;
+    city?: string;
+    amenity?: string;
+    minScore?: number;
+    limit?: number;
+  }
+): Promise<PlaceWithScore[]> {
+  const trimmed = query.trim();
+  if (trimmed.length < 2) return [];
+
+  const db = getDb();
+  const limit = options?.limit ?? 50;
+  const pattern = `%${trimmed}%`;
+
+  const filters = [
+    or(
+      like(places.name, pattern),
+      like(places.address, pattern),
+      like(places.city, pattern)
+    ),
+  ];
+
+  if (options?.city) {
+    filters.push(eq(places.city, options.city));
+  }
+
+  const rows = await db
+    .select()
+    .from(places)
+    .where(and(...filters))
+    .limit(limit * 3);
+
+  let filtered = rows;
+  if (options?.amenity) {
+    filtered = filtered.filter((p) => p.amenity === options.amenity);
+  }
+
+  const scoreMap = await loadScoresForPlaces(filtered.map((p) => p.id));
+
+  let results = filtered.map((place) => {
+    const scoreData = scoreMap.get(place.id) ?? EMPTY_SCORE_DATA;
+    const distanceKm =
+      options?.lat != null && options?.lng != null
+        ? haversineKm(
+            { lat: options.lat, lng: options.lng },
+            { lat: place.lat, lng: place.lng }
+          )
+        : undefined;
+    return enrichPlace(place, scoreData, distanceKm);
+  });
+
+  if (options?.minScore != null) {
+    results = results.filter(
+      (p) =>
+        p.score.displayScore != null &&
+        p.score.displayScore >= options.minScore!
+    );
+  }
+
+  const lowerQuery = trimmed.toLowerCase();
+  results.sort((a, b) => {
+    const aStarts = a.name.toLowerCase().startsWith(lowerQuery) ? 0 : 1;
+    const bStarts = b.name.toLowerCase().startsWith(lowerQuery) ? 0 : 1;
+    if (aStarts !== bStarts) return aStarts - bStarts;
+    if (a.distanceKm != null && b.distanceKm != null) {
+      return a.distanceKm - b.distanceKm;
+    }
+    return a.name.localeCompare(b.name);
+  });
+
+  return results.slice(0, limit);
 }
 
 export async function getPlacesInBounds(

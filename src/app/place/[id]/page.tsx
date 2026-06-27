@@ -48,7 +48,7 @@ export default function PlaceDetailPage() {
   if (error || !place) {
     return (
       <div className="space-y-4 py-12 text-center">
-        <p className="text-red-600">{error ?? "Place not found"}</p>
+        <p className="text-red-600 dark:text-red-400">{error ?? "Place not found"}</p>
         <Link href="/" className="text-frost-600 underline">
           Back to overview
         </Link>

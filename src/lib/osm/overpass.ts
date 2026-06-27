@@ -31,9 +31,11 @@ const OVERPASS_HEADERS = {
 
 const FALLBACK_STATUSES = new Set([429, 502, 504]);
 const NODE_BATCH_SIZE = 3;
-const MAX_RETRIES_PER_ENDPOINT = 2;
-const RETRY_DELAY_MS = 3000;
-const BATCH_DELAY_MS = 1000;
+const MAX_RETRIES_PER_ENDPOINT = 3;
+const RETRY_DELAY_MS = 5000;
+const RATE_LIMIT_DELAY_MS = 60_000;
+const BATCH_DELAY_MS = 3000;
+const FETCH_TIMEOUT_MS = 90_000;
 
 function chunk<T>(items: T[], size: number): T[][] {
   const chunks: T[][] = [];
@@ -59,7 +61,7 @@ function buildNodeQuery(city: NlCity, amenities: AmenityType[]): string {
 (
 ${nodeQueries}
 );
-out tags;
+out body;
 `.trim();
 }
 
@@ -169,6 +171,7 @@ async function fetchOverpass(query: string): Promise<Response> {
         method: "POST",
         headers: OVERPASS_HEADERS,
         body: `data=${encodeURIComponent(query)}`,
+        signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
       });
 
       if (response.ok) {
@@ -178,6 +181,18 @@ async function fetchOverpass(query: string): Promise<Response> {
       const error = new Error(
         `Overpass API error (${url}): ${response.status} ${response.statusText}`
       );
+
+      if (response.status === 429) {
+        lastError = error;
+        console.warn(
+          `Overpass rate limited (${url}). Waiting ${RATE_LIMIT_DELAY_MS / 1000}s before retry...`
+        );
+        await sleep(RATE_LIMIT_DELAY_MS);
+        if (attempt < MAX_RETRIES_PER_ENDPOINT) {
+          continue;
+        }
+        break;
+      }
 
       if (FALLBACK_STATUSES.has(response.status)) {
         lastError = error;
@@ -201,10 +216,12 @@ async function fetchBatch(
   seen: Set<string>,
   places: OsmPlace[]
 ) {
+  console.log(`  Overpass: ${city.name} (${label})...`);
   try {
     const response = await fetchOverpass(query);
     const data = (await response.json()) as OverpassResponse;
     mergeElements(data.elements, city, seen, places);
+    console.log(`  Overpass: ${label} → ${data.elements.length} elements (${places.length} total places)`);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     console.warn(

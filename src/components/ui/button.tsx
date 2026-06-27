@@ -8,9 +8,10 @@ const buttonVariants = cva(
     variants: {
       variant: {
         default: "bg-frost-600 text-white hover:bg-frost-700",
-        secondary: "bg-frost-100 text-frost-900 hover:bg-frost-200",
-        outline: "border border-frost-300 bg-transparent hover:bg-frost-50",
-        ghost: "hover:bg-frost-100",
+        secondary: "bg-frost-100 text-frost-900 hover:bg-frost-200 dark:hover:bg-frost-200",
+        outline:
+          "border border-frost-300 bg-transparent hover:bg-frost-50 dark:hover:bg-frost-200",
+        ghost: "hover:bg-frost-100 dark:hover:bg-frost-200",
         destructive: "bg-red-600 text-white hover:bg-red-700",
       },
       size: {

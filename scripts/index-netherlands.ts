@@ -91,7 +91,7 @@ async function main() {
           });
 
         let wikiText: string | null = null;
-        if (osmPlace.wikipediaSlug) {
+        if (!skipAi && osmPlace.wikipediaSlug) {
           const wiki = await fetchWikipediaExtract(osmPlace.wikipediaSlug);
           wikiText = wiki?.extract ?? null;
         }
@@ -137,7 +137,9 @@ async function main() {
           );
         }
 
-        await sleep(BATCH_DELAY_MS);
+        if (!skipAi) {
+          await sleep(BATCH_DELAY_MS);
+        }
       }
 
       await db

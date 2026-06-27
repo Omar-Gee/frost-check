@@ -3,6 +3,8 @@ import Link from "next/link";
 import { Snowflake } from "lucide-react";
 import { auth, signOut } from "@/auth";
 import { SessionProvider } from "@/components/providers/session-provider";
+import { ThemeProvider } from "@/components/providers/theme-provider";
+import { ThemeToggle } from "@/components/theme/theme-toggle";
 import { Button } from "@/components/ui/button";
 import "./globals.css";
 
@@ -20,16 +22,18 @@ export default async function RootLayout({
   const session = await auth();
 
   return (
-    <html lang="en" className="h-full">
+    <html lang="en" className="h-full" suppressHydrationWarning>
       <body className="min-h-full bg-frost-50 text-frost-900 antialiased">
-        <SessionProvider>
-          <header className="border-b border-frost-200 bg-white">
-            <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-3">
-              <Link href="/" className="flex items-center gap-2 font-bold text-frost-800">
-                <Snowflake className="h-6 w-6 text-frost-600" />
-                FrostCheck
-              </Link>
-              <nav className="flex items-center gap-3">
+        <ThemeProvider>
+          <SessionProvider>
+            <header className="border-b border-frost-200 bg-card">
+              <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-3">
+                <Link href="/" className="flex items-center gap-2 font-bold text-frost-800">
+                  <Snowflake className="h-6 w-6 text-frost-600" />
+                  FrostCheck
+                </Link>
+                <nav className="flex items-center gap-2">
+                  <ThemeToggle />
                 {session?.user ? (
                   <>
                     <span className="hidden text-sm text-frost-600 sm:inline">
@@ -58,7 +62,8 @@ export default async function RootLayout({
             </div>
           </header>
           <main className="mx-auto max-w-6xl px-4 py-6">{children}</main>
-        </SessionProvider>
+          </SessionProvider>
+        </ThemeProvider>
       </body>
     </html>
   );

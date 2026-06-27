@@ -8,6 +8,7 @@ import {
   PlaceFilters,
   type PlaceFiltersState,
 } from "@/components/places/PlaceFilters";
+import { PlaceSearchBar } from "@/components/places/PlaceSearchBar";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import type { PlaceWithScore } from "@/lib/places/queries";
@@ -39,20 +40,47 @@ export default function HomePage() {
     minScore: "",
     radius: "2",
   });
+  const [searchQuery, setSearchQuery] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
+
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedSearch(searchQuery.trim()), 300);
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
+
+  const isSearchMode = debouncedSearch.length >= 2;
+  const selectedCity = NL_CITIES.find((c) => c.name === locationLabel)?.name;
 
   const fetchPlaces = useCallback(async () => {
     setLoading(true);
     setError(null);
 
-    const params = new URLSearchParams({
-      lat: String(location.lat),
-      lng: String(location.lng),
-      radius: filters.radius || "2",
-    });
-    if (filters.amenity) params.set("amenity", filters.amenity);
-    if (filters.minScore) params.set("minScore", filters.minScore);
-
     try {
+      if (isSearchMode) {
+        const params = new URLSearchParams({
+          q: debouncedSearch,
+          lat: String(location.lat),
+          lng: String(location.lng),
+        });
+        if (selectedCity) params.set("city", selectedCity);
+        if (filters.amenity) params.set("amenity", filters.amenity);
+        if (filters.minScore) params.set("minScore", filters.minScore);
+
+        const res = await fetch(`/api/places/search?${params}`);
+        if (!res.ok) throw new Error("Could not search places");
+        const data = await res.json();
+        setPlaces(data.places ?? []);
+        return;
+      }
+
+      const params = new URLSearchParams({
+        lat: String(location.lat),
+        lng: String(location.lng),
+        radius: filters.radius || "2",
+      });
+      if (filters.amenity) params.set("amenity", filters.amenity);
+      if (filters.minScore) params.set("minScore", filters.minScore);
+
       const res = await fetch(`/api/places/nearby?${params}`);
       if (!res.ok) throw new Error("Could not load places");
       const data = await res.json();
@@ -63,7 +91,7 @@ export default function HomePage() {
     } finally {
       setLoading(false);
     }
-  }, [location, filters]);
+  }, [location, filters, debouncedSearch, isSearchMode, selectedCity]);
 
   useEffect(() => {
     fetchPlaces();
@@ -133,6 +161,8 @@ export default function HomePage() {
           Current location: <strong>{locationLabel}</strong>
         </p>
 
+        <PlaceSearchBar value={searchQuery} onChange={setSearchQuery} />
+
         <PlaceFilters filters={filters} onChange={setFilters} />
 
         <Tabs value={view} onValueChange={(v) => setView(v as "list" | "map")}>
@@ -154,7 +184,7 @@ export default function HomePage() {
               </div>
             )}
             {error && (
-              <p className="rounded-lg bg-red-50 p-4 text-sm text-red-700">
+              <p className="rounded-lg bg-red-50 p-4 text-sm text-red-700 dark:bg-red-950/40 dark:text-red-300">
                 {error}
               </p>
             )}
@@ -164,14 +194,19 @@ export default function HomePage() {
                   No places found
                 </p>
                 <p className="mt-2 text-sm text-frost-600">
-                  Run <code className="rounded bg-frost-100 px-1">npm run index:nl</code> first
-                  to index places, or increase the search radius.
+                  {isSearchMode
+                    ? "Try a different search term or clear the search to browse nearby places."
+                    : "Try a different city, increase the search radius, or check back later — place data may still be indexing."}
                 </p>
               </div>
             )}
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
               {places.map((place) => (
-                <PlaceCard key={place.id} place={place} />
+                <PlaceCard
+                  key={place.id}
+                  place={place}
+                  showCity={isSearchMode}
+                />
               ))}
             </div>
           </TabsContent>

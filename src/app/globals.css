@@ -1,8 +1,11 @@
 @import "tailwindcss";
 
+@custom-variant dark (&:where(.dark, .dark *));
+
 :root {
   --background: #f0f9ff;
   --foreground: #0c4a6e;
+  --card: #ffffff;
   --frost-50: #f0f9ff;
   --frost-100: #e0f2fe;
   --frost-200: #bae6fd;
@@ -15,9 +18,26 @@
   --frost-900: #0c4a6e;
 }
 
+.dark {
+  --background: #071923;
+  --foreground: #e0f2fe;
+  --card: #0c2636;
+  --frost-50: #071923;
+  --frost-100: #0c2636;
+  --frost-200: #163247;
+  --frost-300: #1e4a66;
+  --frost-400: #0284c7;
+  --frost-500: #0ea5e9;
+  --frost-600: #38bdf8;
+  --frost-700: #7dd3fc;
+  --frost-800: #bae6fd;
+  --frost-900: #e0f2fe;
+}
+
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
+  --color-card: var(--card);
   --color-frost-50: var(--frost-50);
   --color-frost-100: var(--frost-100);
   --color-frost-200: var(--frost-200);
@@ -39,7 +59,7 @@ body {
   font-family: inherit;
   height: 100%;
   width: 100%;
-  background: #e0f2fe;
+  background: var(--frost-100);
   z-index: 0;
 }
 
@@ -55,4 +75,13 @@ body {
 .custom-marker {
   background: transparent !important;
   border: none !important;
+}
+
+.leaflet-popup-content-wrapper {
+  background: var(--card);
+  color: var(--foreground);
+}
+
+.leaflet-popup-tip {
+  background: var(--card);
 }
