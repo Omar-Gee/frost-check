@@ -17,10 +17,11 @@ interface PlaceFiltersProps {
 }
 
 const RADIUS_PRESETS = [
-  { value: "0.5", label: "500 m" },
-  { value: "1", label: "1 km" },
   { value: "2", label: "2 km" },
   { value: "5", label: "5 km" },
+  { value: "10", label: "10 km" },
+  { value: "15", label: "15 km" },
+  { value: "20", label: "20 km" },
 ];
 
 export function PlaceFilters({ filters, onChange }: PlaceFiltersProps) {
