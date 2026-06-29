@@ -1,8 +1,11 @@
 import { placeIdFromOsm } from "@/lib/utils";
+import { extractOsmTagText } from "@/lib/reviews/text-sources";
 import {
   AMENITY_TYPES,
+  SHOP_TYPES,
   type AmenityType,
   type NlCity,
+  type ShopType,
 } from "./nl-cities";
 
 export interface OsmPlace {
@@ -15,6 +18,9 @@ export interface OsmPlace {
   lng: number;
   address: string | null;
   wikipediaSlug: string | null;
+  osmText: string | null;
+  website: string | null;
+  phone: string | null;
 }
 
 const OVERPASS_ENDPOINTS = [
@@ -45,13 +51,31 @@ function chunk<T>(items: T[], size: number): T[][] {
   return chunks;
 }
 
-function aroundFilter(city: NlCity): string {
-  const radiusM = city.radiusKm * 1000;
-  return `around:${radiusM},${city.lat},${city.lng}`;
+function aroundFilter(lat: number, lng: number, radiusKm: number): string {
+  const radiusM = radiusKm * 1000;
+  return `around:${radiusM},${lat},${lng}`;
 }
 
-function buildNodeQuery(city: NlCity, amenities: AmenityType[]): string {
-  const around = aroundFilter(city);
+function getGridCells(city: NlCity): Array<{ lat: number; lng: number; radiusKm: number }> {
+  const half = city.radiusKm / 2;
+  const latOffset = half / 111;
+  const lngOffset = half / (111 * Math.cos((city.lat * Math.PI) / 180));
+
+  return [
+    { lat: city.lat + latOffset / 2, lng: city.lng - lngOffset / 2, radiusKm: half },
+    { lat: city.lat + latOffset / 2, lng: city.lng + lngOffset / 2, radiusKm: half },
+    { lat: city.lat - latOffset / 2, lng: city.lng - lngOffset / 2, radiusKm: half },
+    { lat: city.lat - latOffset / 2, lng: city.lng + lngOffset / 2, radiusKm: half },
+  ];
+}
+
+function buildNodeQuery(
+  lat: number,
+  lng: number,
+  radiusKm: number,
+  amenities: AmenityType[]
+): string {
+  const around = aroundFilter(lat, lng, radiusKm);
   const nodeQueries = amenities
     .map((a) => `  node(${around})[name]["amenity"="${a}"];`)
     .join("\n");
@@ -65,8 +89,44 @@ out body;
 `.trim();
 }
 
-function buildWayQuery(city: NlCity, amenities: AmenityType[]): string {
-  const around = aroundFilter(city);
+function buildShopNodeQuery(
+  lat: number,
+  lng: number,
+  radiusKm: number,
+  shops: ShopType[]
+): string {
+  const around = aroundFilter(lat, lng, radiusKm);
+  const nodeQueries = shops
+    .map((s) => `  node(${around})[name]["shop"="${s}"];`)
+    .join("\n");
+
+  return `
+[out:json][timeout:120];
+(
+${nodeQueries}
+);
+out body;
+`.trim();
+}
+
+function buildOfficeNodeQuery(lat: number, lng: number, radiusKm: number): string {
+  const around = aroundFilter(lat, lng, radiusKm);
+  return `
+[out:json][timeout:120];
+(
+  node(${around})[name][office];
+);
+out body;
+`.trim();
+}
+
+function buildWayQuery(
+  lat: number,
+  lng: number,
+  radiusKm: number,
+  amenities: AmenityType[]
+): string {
+  const around = aroundFilter(lat, lng, radiusKm);
   const wayQueries = amenities
     .map((a) => `  way(${around})[name]["amenity"="${a}"];`)
     .join("\n");
@@ -110,15 +170,26 @@ function parseWikipediaSlug(tags: Record<string, string>): string | null {
   return parts.length >= 2 ? parts.slice(1).join(":") : wiki;
 }
 
+function resolveCategory(tags: Record<string, string>): string | null {
+  if (tags.amenity && AMENITY_TYPES.includes(tags.amenity as AmenityType)) {
+    return tags.amenity;
+  }
+  if (tags.shop && SHOP_TYPES.includes(tags.shop as ShopType)) {
+    return tags.shop;
+  }
+  if (tags.office) {
+    return "office";
+  }
+  return tags.amenity ?? null;
+}
+
 function elementToPlace(el: OverpassElement, city: NlCity): OsmPlace | null {
   const tags = el.tags ?? {};
   const name = tags.name;
   if (!name) return null;
 
-  const amenity = tags.amenity ?? null;
-  if (amenity && !AMENITY_TYPES.includes(amenity as AmenityType)) {
-    return null;
-  }
+  const amenity = resolveCategory(tags);
+  if (!amenity) return null;
 
   const lat = el.lat ?? el.center?.lat;
   const lng = el.lon ?? el.center?.lon;
@@ -126,6 +197,7 @@ function elementToPlace(el: OverpassElement, city: NlCity): OsmPlace | null {
 
   const osmType = el.type === "node" ? "node" : el.type;
   const osmId = String(el.id);
+  const osmText = extractOsmTagText(tags);
 
   return {
     id: placeIdFromOsm(osmType, osmId),
@@ -137,6 +209,9 @@ function elementToPlace(el: OverpassElement, city: NlCity): OsmPlace | null {
     lng,
     address: parseAddress(tags),
     wikipediaSlug: parseWikipediaSlug(tags),
+    osmText: osmText || null,
+    website: tags.website ?? tags["contact:website"] ?? null,
+    phone: tags.phone ?? tags["contact:phone"] ?? null,
   };
 }
 
@@ -230,24 +305,47 @@ async function fetchBatch(
   }
 }
 
+async function fetchPlacesForCell(
+  city: NlCity,
+  cell: { lat: number; lng: number; radiusKm: number },
+  amenities: AmenityType[],
+  seen: Set<string>,
+  places: OsmPlace[]
+) {
+  const label = `${cell.lat.toFixed(3)},${cell.lng.toFixed(3)}`;
+
+  const nodeBatches = chunk(amenities, NODE_BATCH_SIZE);
+  for (const batch of nodeBatches) {
+    const query = buildNodeQuery(cell.lat, cell.lng, cell.radiusKm, batch);
+    await fetchBatch(city, `grid ${label} nodes: ${batch.join(", ")}`, query, seen, places);
+    await sleep(BATCH_DELAY_MS);
+  }
+
+  const shopQuery = buildShopNodeQuery(cell.lat, cell.lng, cell.radiusKm, [...SHOP_TYPES]);
+  await fetchBatch(city, `grid ${label} shops`, shopQuery, seen, places);
+  await sleep(BATCH_DELAY_MS);
+
+  const officeQuery = buildOfficeNodeQuery(cell.lat, cell.lng, cell.radiusKm);
+  await fetchBatch(city, `grid ${label} offices`, officeQuery, seen, places);
+  await sleep(BATCH_DELAY_MS);
+
+  for (const amenity of amenities) {
+    const query = buildWayQuery(cell.lat, cell.lng, cell.radiusKm, [amenity]);
+    await fetchBatch(city, `grid ${label} ways: ${amenity}`, query, seen, places);
+    await sleep(BATCH_DELAY_MS);
+  }
+}
+
 export async function fetchPlacesForCity(
   city: NlCity,
   amenities: AmenityType[] = [...AMENITY_TYPES]
 ): Promise<OsmPlace[]> {
   const seen = new Set<string>();
   const places: OsmPlace[] = [];
+  const cells = getGridCells(city);
 
-  const nodeBatches = chunk(amenities, NODE_BATCH_SIZE);
-  for (const batch of nodeBatches) {
-    const query = buildNodeQuery(city, batch);
-    await fetchBatch(city, `nodes: ${batch.join(", ")}`, query, seen, places);
-    await sleep(BATCH_DELAY_MS);
-  }
-
-  for (const amenity of amenities) {
-    const query = buildWayQuery(city, [amenity]);
-    await fetchBatch(city, `ways: ${amenity}`, query, seen, places);
-    await sleep(BATCH_DELAY_MS);
+  for (const cell of cells) {
+    await fetchPlacesForCell(city, cell, amenities, seen, places);
   }
 
   return places;

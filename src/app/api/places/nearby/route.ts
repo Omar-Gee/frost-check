@@ -7,6 +7,9 @@ export async function GET(request: NextRequest) {
   const lng = parseFloat(searchParams.get("lng") ?? "");
   const radiusKm = parseFloat(searchParams.get("radius") ?? "2");
   const amenity = searchParams.get("amenity") ?? undefined;
+  const city = searchParams.get("city") ?? undefined;
+  const sortParam = searchParams.get("sort");
+  const sort = sortParam === "ac" ? "ac" : "distance";
   const minScore = searchParams.get("minScore")
     ? parseFloat(searchParams.get("minScore")!)
     : undefined;
@@ -24,25 +27,21 @@ export async function GET(request: NextRequest) {
   try {
     const places = await getNearbyPlaces(lat, lng, radiusKm, {
       amenity: amenity || undefined,
+      city: city || undefined,
       minScore,
       limit,
+      sort,
     });
 
     return NextResponse.json({ places });
   } catch (error) {
     const message =
       error instanceof Error ? error.message : "Unknown server error";
-    const cause =
-      error instanceof Error && error.cause instanceof Error
-        ? error.cause.message
-        : undefined;
     console.error("[GET /api/places/nearby]", error);
     return NextResponse.json(
       {
         error: "Could not fetch places",
-        ...(process.env.NODE_ENV === "development"
-          ? { message, ...(cause ? { cause } : {}) }
-          : {}),
+        ...(process.env.NODE_ENV === "development" ? { message } : {}),
       },
       { status: 500 }
     );

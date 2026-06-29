@@ -7,65 +7,70 @@ export interface ScoreInputs {
 
 export interface CombinedScore {
   displayScore: number | null;
+  frostScore: number | null;
   aiScore: number | null;
   userAverage: number | null;
   userCount: number;
   label: string;
 }
 
-function userRatingToScore(rating: number): number {
-  return ((rating - 1) / 4) * 100;
+function aiScoreToFrost(aiScore100: number): number {
+  return Math.round((1 + (aiScore100 / 100) * 4) * 10) / 10;
+}
+
+function frostToDisplay100(frostScore: number): number {
+  return Math.round(((frostScore - 1) / 4) * 100);
 }
 
 export function averageUserScore(ratings: number[]): number | null {
   if (ratings.length === 0) return null;
-  const sum = ratings.reduce((acc, r) => acc + userRatingToScore(r), 0);
-  return sum / ratings.length;
+  const sum = ratings.reduce((acc, rating) => acc + rating, 0);
+  return Math.round((sum / ratings.length) * 10) / 10;
 }
 
 /**
- * Combined display score:
- * - AI weight scales with confidence (0.3–0.7)
- * - User weight scales with count, capped at 5 ratings
- * - Falls back to whichever source is available
+ * Combined Frost Score (1–5) per MVP plan:
+ * - confidence >= 0.3: 60% AI + 40% user average
+ * - else if >= 2 user ratings: user average
+ * - else fall back to AI or user alone
  */
 export function computeDisplayScore(inputs: ScoreInputs): CombinedScore {
   const { aiScore, aiConfidence, userAverage, userCount } = inputs;
+  const aiFrost = aiScore != null ? aiScoreToFrost(aiScore) : null;
+  const confidence = aiConfidence ?? 0;
 
-  let displayScore: number | null = null;
+  let frostScore: number | null = null;
 
-  const aiWeight =
-    aiScore != null ? 0.3 + (aiConfidence ?? 0.5) * 0.4 : 0;
-  const userWeight = userCount > 0 ? Math.min(userCount, 5) / 5 : 0;
-
-  if (aiScore != null && userAverage != null && aiWeight + userWeight > 0) {
-    displayScore =
-      (aiScore * aiWeight + userAverage * userWeight) /
-      (aiWeight + userWeight);
-  } else if (aiScore != null) {
-    displayScore = aiScore;
+  if (confidence >= 0.3 && aiFrost != null && userAverage != null) {
+    frostScore = 0.6 * aiFrost + 0.4 * userAverage;
+  } else if (userCount >= 2 && userAverage != null) {
+    frostScore = userAverage;
+  } else if (aiFrost != null) {
+    frostScore = aiFrost;
   } else if (userAverage != null) {
-    displayScore = userAverage;
+    frostScore = userAverage;
   }
 
-  const rounded =
-    displayScore != null ? Math.round(displayScore * 10) / 10 : null;
+  const roundedFrost =
+    frostScore != null ? Math.round(frostScore * 10) / 10 : null;
 
   return {
-    displayScore: rounded,
+    frostScore: roundedFrost,
+    displayScore:
+      roundedFrost != null ? frostToDisplay100(roundedFrost) : null,
     aiScore,
     userAverage,
     userCount,
-    label: scoreLabel(rounded),
+    label: scoreLabel(roundedFrost),
   };
 }
 
-function scoreLabel(score: number | null): string {
-  if (score == null) return "Unknown";
-  if (score >= 80) return "Excellent";
-  if (score >= 60) return "Good";
-  if (score >= 40) return "Fair";
-  if (score >= 20) return "Poor";
+function scoreLabel(frostScore: number | null): string {
+  if (frostScore == null) return "No AC data yet — be the first!";
+  if (frostScore >= 4.5) return "Excellent";
+  if (frostScore >= 3.5) return "Good";
+  if (frostScore >= 2.5) return "Fair";
+  if (frostScore >= 1.5) return "Poor";
   return "No AC";
 }
 

@@ -11,7 +11,7 @@ import {
 import L from "leaflet";
 import Link from "next/link";
 import { haversineKm } from "@/lib/db/geo";
-import { formatDistanceKm, scoreToColor } from "@/lib/utils";
+import { formatDistanceKm, formatFrostScore, scoreToColor } from "@/lib/utils";
 import type { PlaceWithScore } from "@/lib/places/queries";
 import "leaflet/dist/leaflet.css";
 
@@ -132,8 +132,8 @@ export function PlacesMap({
         scrollWheelZoom
       >
         <TileLayer
-          attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-          url="https://tile.openstreetmap.org/{z}/{x}/{y}.png"
+          attribution='&copy; <a href="https://openfreemap.org">OpenFreeMap</a> &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+          url="https://tiles.openfreemap.org/osm/{z}/{x}/{y}.png"
           maxZoom={19}
         />
         <MapResizeFix />
@@ -148,11 +148,9 @@ export function PlacesMap({
                   {formatDistanceKm(distanceKm)} away
                 </p>
                 <p className="text-sm">
-                  AC-score:{" "}
-                  {place.score.displayScore != null
-                    ? Math.round(place.score.displayScore)
-                    : "—"}{" "}
-                  ({place.score.label})
+                  Frost Score:{" "}
+                  {formatFrostScore(place.score.frostScore)}
+                  {place.score.label ? ` (${place.score.label})` : ""}
                 </p>
                 <Link
                   href={`/place/${encodeURIComponent(place.id)}`}

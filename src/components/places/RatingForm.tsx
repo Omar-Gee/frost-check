@@ -93,7 +93,7 @@ export function RatingForm({ placeId, onRated }: RatingFormProps) {
           onChange={(e) => setComment(e.target.value)}
           maxLength={500}
           rows={3}
-          className="mt-1 w-full rounded-lg border border-frost-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-frost-500"
+          className="mt-1 w-full rounded-lg border border-frost-300 bg-card px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-frost-500"
           placeholder="e.g. good AC, but too cold by the window..."
         />
       </div>
@@ -119,9 +119,7 @@ export function RatingForm({ placeId, onRated }: RatingFormProps) {
         </p>
       )}
 
-      {message && (
-        <p className="text-sm text-frost-600">{message}</p>
-      )}
+      {message && <p className="text-sm text-frost-600">{message}</p>}
     </form>
   );
 }

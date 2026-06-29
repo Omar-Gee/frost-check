@@ -76,6 +76,9 @@ export const places = sqliteTable(
     address: text("address"),
     city: text("city"),
     wikipediaSlug: text("wikipedia_slug"),
+    website: text("website"),
+    phone: text("phone"),
+    googleMapsUrl: text("google_maps_url"),
     indexedAt: integer("indexed_at", { mode: "timestamp_ms" }),
     createdAt: integer("created_at", { mode: "timestamp_ms" })
       .notNull()
@@ -100,6 +103,9 @@ export const reviewScores = sqliteTable(
     score: integer("score").notNull(),
     confidence: real("confidence").notNull().default(0.5),
     summary: text("summary"),
+    mentionCount: integer("mention_count").default(0),
+    snippets: text("snippets"),
+    textSources: text("text_sources"),
     hasAc: integer("has_ac", { mode: "boolean" }).notNull().default(false),
     source: text("source").notNull().default("ai"),
     aiModel: text("ai_model"),
@@ -135,6 +141,10 @@ export const userRatings = sqliteTable(
       table.placeId,
       table.userId
     ),
+    placeUserUnique: index("user_rating_place_user_unique").on(
+      table.placeId,
+      table.userId
+    ),
   })
 );
 
@@ -146,6 +156,7 @@ export const indexJobs = sqliteTable("index_job", {
   status: text("status").notNull().default("pending"),
   placesFound: integer("places_found").default(0),
   placesIndexed: integer("places_indexed").default(0),
+  lastGeminiCall: integer("last_gemini_call", { mode: "timestamp_ms" }),
   error: text("error"),
   startedAt: integer("started_at", { mode: "timestamp_ms" }),
   finishedAt: integer("finished_at", { mode: "timestamp_ms" }),

@@ -5,6 +5,11 @@ import {
   extractMatchingSentences,
   hasAcKeywords,
 } from "@/lib/reviews/keywords";
+import {
+  buildSnippetsFromText,
+  collectReviewText,
+  type ReviewSnippet,
+} from "@/lib/reviews/text-sources";
 
 export const acScoreSchema = z.object({
   score: z
@@ -23,7 +28,11 @@ export const acScoreSchema = z.object({
     .describe("Brief English summary of AC situation (1-2 sentences)"),
 });
 
-export type AcScoreResult = z.infer<typeof acScoreSchema>;
+export type AcScoreResult = z.infer<typeof acScoreSchema> & {
+  mentionCount: number;
+  snippets: ReviewSnippet[];
+  textSources: string[];
+};
 
 const DAILY_LIMIT = 800;
 let dailyCount = 0;
@@ -49,7 +58,7 @@ function isQuotaError(error: unknown): boolean {
 function disableGemini() {
   geminiDisabled = true;
   if (!geminiDisabledLogged) {
-    console.warn("Gemini unavailable — using heuristic scoring");
+    console.warn("Gemini niet beschikbaar — heuristische scoring");
     geminiDisabledLogged = true;
   }
 }
@@ -80,17 +89,41 @@ export function isUsingHeuristicScoring(): boolean {
 export interface ScorePlaceInput {
   name: string;
   amenity?: string | null;
+  osmText?: string | null;
   wikipediaText?: string | null;
   address?: string | null;
 }
 
+function buildTextSources(input: ScorePlaceInput): string[] {
+  const sources: string[] = [];
+  if (input.osmText?.trim()) sources.push("osm");
+  if (input.wikipediaText?.trim()) sources.push("wikipedia");
+  return sources;
+}
+
+function buildSnippets(input: ScorePlaceInput): ReviewSnippet[] {
+  const snippets: ReviewSnippet[] = [];
+  if (input.osmText?.trim()) {
+    snippets.push(...buildSnippetsFromText(input.osmText, "osm"));
+  }
+  if (input.wikipediaText?.trim()) {
+    snippets.push(...buildSnippetsFromText(input.wikipediaText, "wikipedia"));
+  }
+  return snippets;
+}
+
 function buildPrompt(input: ScorePlaceInput): string {
+  const combinedText = collectReviewText({
+    osmText: input.osmText,
+    wikipediaText: input.wikipediaText,
+  });
+
   const parts = [
-    `Rate the air conditioning (AC) situation for: "${input.name}"`,
+    `Rate the air conditioning (AC) for: "${input.name}"`,
     input.amenity ? `Type: ${input.amenity}` : null,
     input.address ? `Address: ${input.address}` : null,
     "",
-    "Give a score from 0-100:",
+    "Score from 0-100:",
     "- 80-100: excellent AC, comfortably cool",
     "- 60-79: good AC available",
     "- 40-59: limited cooling or unknown",
@@ -99,15 +132,15 @@ function buildPrompt(input: ScorePlaceInput): string {
     "",
   ];
 
-  if (input.wikipediaText) {
-    parts.push("Wikipedia text:", input.wikipediaText);
-    const matches = extractMatchingSentences(input.wikipediaText);
+  if (combinedText) {
+    parts.push("Available text:", combinedText);
+    const matches = extractMatchingSentences(combinedText);
     if (matches.length > 0) {
       parts.push("", "Relevant sentences:", matches.join("\n"));
     }
   } else {
     parts.push(
-      "No Wikipedia text available. Base your estimate on the venue type and general knowledge about AC in Dutch hospitality and buildings."
+      "No text available. Base your estimate on the venue type and general knowledge about AC in Dutch buildings."
     );
   }
 
@@ -118,17 +151,25 @@ function buildPrompt(input: ScorePlaceInput): string {
 export async function scorePlaceAc(
   input: ScorePlaceInput
 ): Promise<AcScoreResult | null> {
-  if (isHeuristicMode() || geminiDisabled) {
-    return heuristicScore(input);
-  }
+  const combinedText = collectReviewText({
+    osmText: input.osmText,
+    wikipediaText: input.wikipediaText,
+  });
+  const snippets = buildSnippets(input);
+  const textSources = buildTextSources(input);
+  const mentionCount = snippets.length;
 
-  if (!process.env.GOOGLE_GENERATIVE_AI_API_KEY) {
-    return heuristicScore(input);
+  if (isHeuristicMode() || geminiDisabled || !process.env.GOOGLE_GENERATIVE_AI_API_KEY) {
+    return heuristicScore(input, snippets, textSources, mentionCount);
   }
 
   if (!checkDailyLimit()) {
-    console.warn("Gemini daily limit reached, using heuristic fallback");
-    return heuristicScore(input);
+    console.warn("Gemini daglimiet bereikt, heuristische fallback");
+    return heuristicScore(input, snippets, textSources, mentionCount);
+  }
+
+  if (!hasAcKeywords(combinedText)) {
+    return heuristicScore(input, snippets, textSources, mentionCount);
   }
 
   try {
@@ -139,23 +180,36 @@ export async function scorePlaceAc(
       maxRetries: 0,
     });
     incrementDailyCount();
-    return object;
+    return {
+      ...object,
+      mentionCount,
+      snippets,
+      textSources,
+    };
   } catch (error) {
     if (isQuotaError(error)) {
       disableGemini();
     } else {
-      console.error("Gemini scoring failed:", error);
+      console.error("Gemini scoring mislukt:", error);
     }
-    return heuristicScore(input);
+    return heuristicScore(input, snippets, textSources, mentionCount);
   }
 }
 
-function heuristicScore(input: ScorePlaceInput): AcScoreResult {
-  const text = input.wikipediaText ?? "";
+function heuristicScore(
+  input: ScorePlaceInput,
+  snippets: ReviewSnippet[],
+  textSources: string[],
+  mentionCount: number
+): AcScoreResult {
+  const text = collectReviewText({
+    osmText: input.osmText,
+    wikipediaText: input.wikipediaText,
+  });
   const hasKeywords = hasAcKeywords(text);
 
   const hotAmenities = ["cafe", "restaurant", "bar", "pub", "fast_food"];
-  const coolAmenities = ["library", "cinema", "museum", "hotel"];
+  const coolAmenities = ["library", "cinema", "museum", "hotel", "fitness_centre"];
 
   let score = 45;
   let hasAc = false;
@@ -196,5 +250,8 @@ function heuristicScore(input: ScorePlaceInput): AcScoreResult {
     summary: hasAc
       ? "AC may be present based on available information."
       : "No reliable AC information found; cooling is likely limited.",
+    mentionCount,
+    snippets,
+    textSources,
   };
 }

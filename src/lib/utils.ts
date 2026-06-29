@@ -26,12 +26,24 @@ export function formatDistanceKm(km: number): string {
 }
 
 export function scoreToLabel(score: number | null | undefined): string {
-  if (score == null) return "Unknown";
-  if (score >= 80) return "Excellent";
-  if (score >= 60) return "Good";
-  if (score >= 40) return "Fair";
-  if (score >= 20) return "Poor";
+  if (score == null) return "No AC data";
+  const frost = scoreToFrost(score);
+  if (frost == null) return "No AC data";
+  if (frost >= 4.5) return "Excellent";
+  if (frost >= 3.5) return "Good";
+  if (frost >= 2.5) return "Fair";
+  if (frost >= 1.5) return "Poor";
   return "No AC";
+}
+
+export function scoreToFrost(score100: number | null | undefined): number | null {
+  if (score100 == null) return null;
+  return Math.round((1 + (score100 / 100) * 4) * 10) / 10;
+}
+
+export function formatFrostScore(frostScore: number | null | undefined): string {
+  if (frostScore == null) return "—";
+  return frostScore.toFixed(1);
 }
 
 export function scoreToColor(score: number | null | undefined): string {

@@ -8,6 +8,7 @@ import { AcScoreBadge } from "@/components/places/AcScoreBadge";
 import { RatingForm } from "@/components/places/RatingForm";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { AMENITY_LABELS } from "@/lib/osm/nl-cities";
 import { buildGoogleMapsUrl } from "@/lib/utils";
 import type { PlaceDetail } from "@/lib/places/queries";
 
@@ -48,7 +49,9 @@ export default function PlaceDetailPage() {
   if (error || !place) {
     return (
       <div className="space-y-4 py-12 text-center">
-        <p className="text-red-600 dark:text-red-400">{error ?? "Place not found"}</p>
+        <p className="text-red-600 dark:text-red-400">
+          {error ?? "Place not found"}
+        </p>
         <Link href="/" className="text-frost-600 underline">
           Back to overview
         </Link>
@@ -56,7 +59,12 @@ export default function PlaceDetailPage() {
     );
   }
 
-  const mapsUrl = buildGoogleMapsUrl(place.lat, place.lng, place.name);
+  const mapsUrl =
+    place.googleMapsUrl ?? buildGoogleMapsUrl(place.lat, place.lng, place.name);
+  const wikiUrl = place.wikipediaSlug
+    ? `https://en.wikipedia.org/wiki/${encodeURIComponent(place.wikipediaSlug)}`
+    : null;
+  const userAverage = place.score.userAverage;
 
   return (
     <div className="space-y-6">
@@ -72,11 +80,14 @@ export default function PlaceDetailPage() {
         <div>
           <h1 className="text-2xl font-bold text-frost-900">{place.name}</h1>
           {place.amenity && (
-            <Badge className="mt-2">{place.amenity}</Badge>
+            <Badge className="mt-2">
+              {AMENITY_LABELS[place.amenity] ?? place.amenity}
+            </Badge>
           )}
         </div>
         <AcScoreBadge
           score={place.score.displayScore}
+          frostScore={place.score.frostScore}
           label={place.score.label}
           size="lg"
         />
@@ -93,14 +104,36 @@ export default function PlaceDetailPage() {
       {place.latestSummary && (
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">AI analysis</CardTitle>
+            <CardTitle className="text-base">
+              What reviews say about the AC
+            </CardTitle>
           </CardHeader>
-          <CardContent>
+          <CardContent className="space-y-3">
             <p className="text-frost-700">{place.latestSummary}</p>
-            {place.hasAc != null && (
-              <p className="mt-2 text-sm text-frost-500">
-                AC present: {place.hasAc ? "Likely yes" : "Likely no"}
+            {place.confidence != null && (
+              <p className="text-sm text-frost-500">
+                Confidence: {Math.round(place.confidence * 100)}%
               </p>
+            )}
+            {place.hasAc != null && (
+              <p className="text-sm text-frost-500">
+                AC likely present: {place.hasAc ? "Yes" : "No"}
+              </p>
+            )}
+            {place.snippets.length > 0 && (
+              <ul className="space-y-2 border-t border-frost-100 pt-3">
+                {place.snippets.map((snippet, index) => (
+                  <li
+                    key={`${snippet.source}-${index}`}
+                    className="rounded-lg bg-frost-50 px-3 py-2 text-sm text-frost-700"
+                  >
+                    <span className="mr-2 text-xs uppercase text-frost-500">
+                      {snippet.source}
+                    </span>
+                    {snippet.text}
+                  </li>
+                ))}
+              </ul>
             )}
           </CardContent>
         </Card>
@@ -123,6 +156,13 @@ export default function PlaceDetailPage() {
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
+            {userAverage != null && place.score.userCount > 0 && (
+              <p className="text-sm text-frost-600">
+                Average: <strong>{userAverage.toFixed(1)}/5</strong> (
+                {place.score.userCount} rating
+                {place.score.userCount !== 1 ? "s" : ""})
+              </p>
+            )}
             {place.userRatings.length === 0 && (
               <p className="text-sm text-frost-500">
                 No ratings yet. Be the first!
@@ -148,15 +188,30 @@ export default function PlaceDetailPage() {
         </Card>
       </div>
 
-      <a
-        href={mapsUrl}
-        target="_blank"
-        rel="noopener noreferrer"
-        className="inline-flex items-center gap-2 text-sm text-frost-600 underline"
-      >
-        Open in Google Maps
-        <ExternalLink className="h-4 w-4" />
-      </a>
+      <div className="flex flex-wrap gap-4">
+        <a
+          href={mapsUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="inline-flex items-center gap-2 text-sm text-frost-600 underline"
+        >
+          View reviews on Google Maps
+          <ExternalLink className="h-4 w-4" />
+        </a>
+        {wikiUrl && (
+          <a
+            href={wikiUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-2 text-sm text-frost-600 underline"
+          >
+            Wikipedia
+            <ExternalLink className="h-4 w-4" />
+          </a>
+        )}
+      </div>
+
+      <p className="text-xs text-frost-500">© OpenStreetMap contributors</p>
     </div>
   );
 }

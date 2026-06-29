@@ -9,6 +9,7 @@ import { getDb } from "@/lib/db/client";
 import { indexJobs, places, reviewScores } from "@/lib/db/schema";
 import { NL_CITIES } from "@/lib/osm/nl-cities";
 import { fetchPlacesForCity } from "@/lib/osm/overpass";
+import { buildGoogleMapsSearchUrl } from "@/lib/reviews/text-sources";
 import { fetchWikipediaExtract } from "@/lib/reviews/wikipedia";
 
 const DAILY_LIMIT = 800;
@@ -64,6 +65,8 @@ async function main() {
         .where(eq(indexJobs.id, job.id));
 
       for (const osmPlace of osmPlaces) {
+        const googleMapsUrl = buildGoogleMapsSearchUrl(osmPlace.name, city.name);
+
         await db
           .insert(places)
           .values({
@@ -77,6 +80,9 @@ async function main() {
             address: osmPlace.address,
             city: city.name,
             wikipediaSlug: osmPlace.wikipediaSlug,
+            website: osmPlace.website,
+            phone: osmPlace.phone,
+            googleMapsUrl,
           })
           .onConflictDoUpdate({
             target: places.id,
@@ -87,11 +93,14 @@ async function main() {
               lng: osmPlace.lng,
               address: osmPlace.address,
               wikipediaSlug: osmPlace.wikipediaSlug,
+              website: osmPlace.website,
+              phone: osmPlace.phone,
+              googleMapsUrl,
             },
           });
 
         let wikiText: string | null = null;
-        if (!skipAi && osmPlace.wikipediaSlug) {
+        if (osmPlace.wikipediaSlug) {
           const wiki = await fetchWikipediaExtract(osmPlace.wikipediaSlug);
           wikiText = wiki?.extract ?? null;
         }
@@ -101,6 +110,7 @@ async function main() {
           aiResult = await scorePlaceAc({
             name: osmPlace.name,
             amenity: osmPlace.amenity,
+            osmText: osmPlace.osmText,
             wikipediaText: wikiText,
             address: osmPlace.address,
           });
@@ -117,6 +127,9 @@ async function main() {
             score: Math.round(aiResult.score),
             confidence: aiResult.confidence,
             summary: aiResult.summary,
+            mentionCount: aiResult.mentionCount,
+            snippets: JSON.stringify(aiResult.snippets),
+            textSources: JSON.stringify(aiResult.textSources),
             hasAc: aiResult.hasAc,
             source: usingHeuristic ? "heuristic" : "ai",
             aiModel: usingHeuristic ? "heuristic" : "gemini-2.0-flash-lite",
@@ -126,6 +139,13 @@ async function main() {
             .update(places)
             .set({ indexedAt: new Date() })
             .where(eq(places.id, osmPlace.id));
+
+          if (!usingHeuristic) {
+            await db
+              .update(indexJobs)
+              .set({ lastGeminiCall: new Date() })
+              .where(eq(indexJobs.id, job.id));
+          }
 
           cityIndexed++;
           totalIndexed++;

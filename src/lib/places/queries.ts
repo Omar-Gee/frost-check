@@ -2,11 +2,38 @@ import { and, desc, eq, gte, inArray, like, lte, or } from "drizzle-orm";
 import { getDb } from "@/lib/db/client";
 import { boundingBox, haversineKm, type BoundingBox } from "@/lib/db/geo";
 import { places, reviewScores, userRatings, users } from "@/lib/db/schema";
+import type { ReviewSnippet } from "@/lib/reviews/text-sources";
 import {
   averageUserScore,
   computeDisplayScore,
   type CombinedScore,
 } from "@/lib/scoring/combined";
+
+function parseSnippets(raw: string | null | undefined): ReviewSnippet[] {
+  if (!raw) return [];
+  try {
+    return JSON.parse(raw) as ReviewSnippet[];
+  } catch {
+    return [];
+  }
+}
+
+function sortByScore(
+  results: PlaceWithScore[],
+  sort: "distance" | "ac" = "distance"
+): PlaceWithScore[] {
+  if (sort === "ac") {
+    return [...results].sort((a, b) => {
+      const aScore = a.score.frostScore ?? -1;
+      const bScore = b.score.frostScore ?? -1;
+      if (bScore !== aScore) return bScore - aScore;
+      return (a.distanceKm ?? 999) - (b.distanceKm ?? 999);
+    });
+  }
+  return [...results].sort(
+    (a, b) => (a.distanceKm ?? 999) - (b.distanceKm ?? 999)
+  );
+}
 
 export interface PlaceWithScore {
   id: string;
@@ -19,6 +46,7 @@ export interface PlaceWithScore {
   address: string | null;
   city: string | null;
   wikipediaSlug: string | null;
+  googleMapsUrl: string | null;
   distanceKm?: number;
   score: CombinedScore;
   latestSummary: string | null;
@@ -26,6 +54,8 @@ export interface PlaceWithScore {
 }
 
 export interface PlaceDetail extends PlaceWithScore {
+  snippets: ReviewSnippet[];
+  confidence: number | null;
   userRatings: Array<{
     id: string;
     rating: number;
@@ -37,6 +67,7 @@ export interface PlaceDetail extends PlaceWithScore {
     score: number;
     confidence: number;
     summary: string | null;
+    snippets: ReviewSnippet[];
     createdAt: Date;
   }>;
 }
@@ -100,10 +131,11 @@ const EMPTY_SCORE_DATA: PlaceWithScore["score"] & {
   hasAc: boolean | null;
 } = {
   displayScore: null,
+  frostScore: null,
   aiScore: null,
   userAverage: null,
   userCount: 0,
-  label: "Unknown",
+  label: "No AC data yet — be the first!",
   summary: null,
   hasAc: null,
 };
@@ -127,9 +159,11 @@ function enrichPlace(
     address: place.address,
     city: place.city,
     wikipediaSlug: place.wikipediaSlug,
+    googleMapsUrl: place.googleMapsUrl,
     distanceKm,
     score: {
       displayScore: scoreData.displayScore,
+      frostScore: scoreData.frostScore,
       aiScore: scoreData.aiScore,
       userAverage: scoreData.userAverage,
       userCount: scoreData.userCount,
@@ -144,23 +178,33 @@ export async function getNearbyPlaces(
   lat: number,
   lng: number,
   radiusKm: number,
-  options?: { amenity?: string; minScore?: number; limit?: number }
+  options?: {
+    amenity?: string;
+    city?: string;
+    minScore?: number;
+    limit?: number;
+    sort?: "distance" | "ac";
+  }
 ): Promise<PlaceWithScore[]> {
   const db = getDb();
   const box = boundingBox({ lat, lng }, radiusKm);
   const limit = options?.limit ?? 50;
 
+  const filters = [
+    gte(places.lat, box.minLat),
+    lte(places.lat, box.maxLat),
+    gte(places.lng, box.minLng),
+    lte(places.lng, box.maxLng),
+  ];
+
+  if (options?.city) {
+    filters.push(eq(places.city, options.city));
+  }
+
   const rows = await db
     .select()
     .from(places)
-    .where(
-      and(
-        gte(places.lat, box.minLat),
-        lte(places.lat, box.maxLat),
-        gte(places.lng, box.minLng),
-        lte(places.lng, box.maxLng)
-      )
-    );
+    .where(and(...filters));
 
   let filtered = rows
     .map((p) => ({
@@ -173,8 +217,7 @@ export async function getNearbyPlaces(
     filtered = filtered.filter((x) => x.place.amenity === options.amenity);
   }
 
-  filtered.sort((a, b) => a.distanceKm - b.distanceKm);
-  filtered = filtered.slice(0, limit);
+  filtered = filtered.slice(0, limit * 2);
 
   const scoreMap = await loadScoresForPlaces(filtered.map((x) => x.place.id));
 
@@ -191,7 +234,8 @@ export async function getNearbyPlaces(
     );
   }
 
-  return results;
+  results = sortByScore(results, options?.sort ?? "distance");
+  return results.slice(0, limit);
 }
 
 export async function searchPlaces(
@@ -273,7 +317,12 @@ export async function searchPlaces(
 
 export async function getPlacesInBounds(
   bounds: BoundingBox,
-  options?: { amenity?: string; minScore?: number; limit?: number }
+  options?: {
+    amenity?: string;
+    minScore?: number;
+    limit?: number;
+    sort?: "distance" | "ac";
+  }
 ): Promise<PlaceWithScore[]> {
   const db = getDb();
   const limit = options?.limit ?? 100;
@@ -311,7 +360,7 @@ export async function getPlacesInBounds(
     );
   }
 
-  return results;
+  return sortByScore(results, options?.sort ?? "ac").slice(0, limit);
 }
 
 export async function getPlaceDetail(id: string): Promise<PlaceDetail | null> {
@@ -329,12 +378,15 @@ export async function getPlaceDetail(id: string): Promise<PlaceDetail | null> {
       score: reviewScores.score,
       confidence: reviewScores.confidence,
       summary: reviewScores.summary,
+      snippets: reviewScores.snippets,
       createdAt: reviewScores.createdAt,
     })
     .from(reviewScores)
     .where(eq(reviewScores.placeId, id))
     .orderBy(desc(reviewScores.createdAt))
     .limit(10);
+
+  const latestAi = aiHistory[0];
 
   const ratings = await db
     .select({
@@ -351,6 +403,8 @@ export async function getPlaceDetail(id: string): Promise<PlaceDetail | null> {
 
   return {
     ...base,
+    snippets: parseSnippets(latestAi?.snippets),
+    confidence: latestAi?.confidence ?? null,
     userRatings: ratings.map((r) => ({
       id: r.id,
       rating: r.rating,
@@ -362,6 +416,7 @@ export async function getPlaceDetail(id: string): Promise<PlaceDetail | null> {
       score: h.score,
       confidence: h.confidence,
       summary: h.summary,
+      snippets: parseSnippets(h.snippets),
       createdAt: h.createdAt,
     })),
   };

@@ -39,6 +39,7 @@ export default function HomePage() {
     amenity: "",
     minScore: "",
     radius: "2",
+    sort: "ac",
   });
   const [searchQuery, setSearchQuery] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
@@ -77,7 +78,9 @@ export default function HomePage() {
         lat: String(location.lat),
         lng: String(location.lng),
         radius: filters.radius || "2",
+        sort: filters.sort,
       });
+      if (selectedCity) params.set("city", selectedCity);
       if (filters.amenity) params.set("amenity", filters.amenity);
       if (filters.minScore) params.set("minScore", filters.minScore);
 
@@ -93,9 +96,45 @@ export default function HomePage() {
     }
   }, [location, filters, debouncedSearch, isSearchMode, selectedCity]);
 
+  const fetchPlacesInBounds = useCallback(
+    async (bounds: {
+      minLat: number;
+      maxLat: number;
+      minLng: number;
+      maxLng: number;
+    }) => {
+      setLoading(true);
+      setError(null);
+
+      const params = new URLSearchParams({
+        minLat: String(bounds.minLat),
+        maxLat: String(bounds.maxLat),
+        minLng: String(bounds.minLng),
+        maxLng: String(bounds.maxLng),
+        sort: filters.sort,
+      });
+      if (filters.amenity) params.set("amenity", filters.amenity);
+      if (filters.minScore) params.set("minScore", filters.minScore);
+
+      try {
+        const res = await fetch(`/api/places/bounds?${params}`);
+        if (!res.ok) throw new Error("Could not load map places");
+        const data = await res.json();
+        setPlaces(data.places ?? []);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Unknown error");
+        setPlaces([]);
+      } finally {
+        setLoading(false);
+      }
+    },
+    [filters]
+  );
+
   useEffect(() => {
+    if (view === "map") return;
     fetchPlaces();
-  }, [fetchPlaces]);
+  }, [fetchPlaces, view]);
 
   function useGeolocation() {
     if (!navigator.geolocation) {
@@ -190,13 +229,11 @@ export default function HomePage() {
             )}
             {!loading && !error && places.length === 0 && (
               <div className="rounded-xl border border-dashed border-frost-300 p-8 text-center">
-                <p className="font-medium text-frost-800">
-                  No places found
-                </p>
+                <p className="font-medium text-frost-800">No places found</p>
                 <p className="mt-2 text-sm text-frost-600">
                   {isSearchMode
-                    ? "Try a different search term or clear the search to browse nearby places."
-                    : "Try a different city, increase the search radius, or check back later — place data may still be indexing."}
+                    ? "Try a different search term or clear the search."
+                    : "Try a different city, increase the radius, or check back later — place data may still be indexing."}
                 </p>
               </div>
             )}
@@ -216,6 +253,7 @@ export default function HomePage() {
               places={places}
               center={[location.lat, location.lng]}
               userLocation={location}
+              onBoundsChange={fetchPlacesInBounds}
             />
           </TabsContent>
         </Tabs>
@@ -231,7 +269,7 @@ export default function HomePage() {
         >
           OpenStreetMap
         </a>{" "}
-        contributors
+        contributors · Tiles via OpenFreeMap
       </footer>
     </div>
   );

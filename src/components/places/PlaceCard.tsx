@@ -4,6 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { AcScoreBadge } from "./AcScoreBadge";
 import { formatDistanceKm } from "@/lib/utils";
+import { AMENITY_LABELS } from "@/lib/osm/nl-cities";
 import type { PlaceWithScore } from "@/lib/places/queries";
 
 interface PlaceCardProps {
@@ -22,6 +23,7 @@ export function PlaceCard({ place, showCity }: PlaceCardProps) {
             <CardTitle className="text-base">{place.name}</CardTitle>
             <AcScoreBadge
               score={place.score.displayScore}
+              frostScore={place.score.frostScore}
               label={place.score.label}
               size="sm"
             />
@@ -29,7 +31,9 @@ export function PlaceCard({ place, showCity }: PlaceCardProps) {
         </CardHeader>
         <CardContent className="space-y-2">
           {place.amenity && (
-            <Badge variant="default">{place.amenity}</Badge>
+            <Badge variant="default">
+              {AMENITY_LABELS[place.amenity] ?? place.amenity}
+            </Badge>
           )}
           {(place.address || (showCity && place.city)) && (
             <p className="flex items-center gap-1 text-sm text-frost-600">
