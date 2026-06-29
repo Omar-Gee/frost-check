@@ -9,7 +9,7 @@
 - **NextAuth v5** — Google / GitHub OAuth (+ email login in development)
 - **OpenStreetMap** — Overpass API for place data
 - **Gemini Flash-Lite** — optional AI AC scoring (heuristic fallback)
-- **Leaflet + OpenFreeMap** — interactive map
+- **Leaflet + CARTO/OSM** — interactive map
 
 ## Local development
 
@@ -131,7 +131,7 @@ Arnhem · Tilburg · Amsterdam · Den Haag · Brussels
 
 ## Attribution
 
-- Map tiles: [OpenStreetMap](https://www.openstreetmap.org/copyright) contributors · [OpenFreeMap](https://openfreemap.org)
+- Map tiles: [OpenStreetMap](https://www.openstreetmap.org/copyright) contributors · [CARTO](https://carto.com/attributions)
 - POI data: OpenStreetMap via Overpass API
 - Wikipedia extracts: Wikipedia REST API
 

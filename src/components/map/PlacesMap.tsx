@@ -132,9 +132,10 @@ export function PlacesMap({
         scrollWheelZoom
       >
         <TileLayer
-          attribution='&copy; <a href="https://openfreemap.org">OpenFreeMap</a> &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
-          url="https://tiles.openfreemap.org/osm/{z}/{x}/{y}.png"
-          maxZoom={19}
+          attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>'
+          url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png"
+          subdomains={["a", "b", "c", "d"]}
+          maxZoom={20}
         />
         <MapResizeFix />
         <MapCenterUpdater center={center} zoom={zoom} />

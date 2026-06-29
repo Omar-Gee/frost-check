@@ -269,7 +269,7 @@ export default function HomePage() {
         >
           OpenStreetMap
         </a>{" "}
-        contributors · Tiles via OpenFreeMap
+        contributors · Tiles © <a href="https://carto.com/attributions">CARTO</a>
       </footer>
     </div>
   );
