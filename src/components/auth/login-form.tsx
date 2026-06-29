@@ -160,7 +160,7 @@ export function LoginForm({
       {!showDevLogin && !hasGoogle && !hasGitHub && (
         <p className="rounded-lg bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:bg-amber-950/40 dark:text-amber-200">
           No sign-in method configured. Add OAuth keys in{" "}
-          <code className="rounded bg-amber-100 px-1">.env.local</code>.
+          <code className="rounded bg-amber-100 px-1">.env</code>.
         </p>
       )}
     </div>

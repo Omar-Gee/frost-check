@@ -65,7 +65,11 @@ async function main() {
         .where(eq(indexJobs.id, job.id));
 
       for (const osmPlace of osmPlaces) {
-        const googleMapsUrl = buildGoogleMapsSearchUrl(osmPlace.name, city.name);
+        const googleMapsUrl = buildGoogleMapsSearchUrl(
+          osmPlace.name,
+          city.name,
+          city.country
+        );
 
         await db
           .insert(places)

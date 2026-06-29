@@ -2,9 +2,9 @@ import { defineConfig } from "drizzle-kit";
 import path from "node:path";
 import "dotenv/config";
 
-const url =
-  process.env.TURSO_DATABASE_URL ??
-  `file:${path.join(process.cwd(), "local.db")}`;
+const tursoUrl = process.env.TURSO_DATABASE_URL?.trim();
+const tursoToken = process.env.TURSO_AUTH_TOKEN?.trim();
+const url = tursoUrl || `file:${path.join(process.cwd(), "local.db")}`;
 
 export default defineConfig({
   schema: "./src/lib/db/schema.ts",
@@ -12,6 +12,6 @@ export default defineConfig({
   dialect: "turso",
   dbCredentials: {
     url,
-    authToken: process.env.TURSO_AUTH_TOKEN,
+    ...(tursoUrl && tursoToken ? { authToken: tursoToken } : {}),
   },
 });

@@ -83,8 +83,8 @@ function buildProviders() {
   }
 
   if (providers.length === 0) {
-    throw new Error(
-      "No auth providers configured. Set AUTH_GOOGLE_* or AUTH_GITHUB_* environment variables."
+    console.warn(
+      "No auth providers configured. Set AUTH_GOOGLE_* or AUTH_GITHUB_* in .env (or use email sign-in in development)."
     );
   }
 
@@ -95,8 +95,17 @@ function getAuthSecret(): string {
   const secret = process.env.AUTH_SECRET?.trim();
   if (secret) return secret;
 
-  if (process.env.NODE_ENV === "production") {
+  if (
+    process.env.NODE_ENV === "production" &&
+    process.env.VERCEL_ENV === "production"
+  ) {
     throw new Error("AUTH_SECRET is required in production");
+  }
+
+  if (process.env.NODE_ENV === "production") {
+    console.warn(
+      "AUTH_SECRET is not set — using a local-only fallback for this build."
+    );
   }
 
   return "dev-secret-local-only";

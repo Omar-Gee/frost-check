@@ -60,10 +60,11 @@ function inferSentiment(sentence: string): ReviewSnippet["sentiment"] {
 
 export function buildGoogleMapsSearchUrl(
   name: string,
-  city?: string | null
+  city?: string | null,
+  country = "Netherlands"
 ): string {
   const query = encodeURIComponent(
-    [name, city, "Nederland"].filter(Boolean).join(" ")
+    [name, city, country].filter(Boolean).join(" ")
   );
   return `https://www.google.com/maps/search/?api=1&query=${query}`;
 }

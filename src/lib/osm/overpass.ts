@@ -109,6 +109,26 @@ out body;
 `.trim();
 }
 
+function buildShopWayQuery(
+  lat: number,
+  lng: number,
+  radiusKm: number,
+  shops: ShopType[]
+): string {
+  const around = aroundFilter(lat, lng, radiusKm);
+  const wayQueries = shops
+    .map((s) => `  way(${around})[name]["shop"="${s}"];`)
+    .join("\n");
+
+  return `
+[out:json][timeout:120];
+(
+${wayQueries}
+);
+out center tags;
+`.trim();
+}
+
 function buildOfficeNodeQuery(lat: number, lng: number, radiusKm: number): string {
   const around = aroundFilter(lat, lng, radiusKm);
   return `
@@ -321,9 +341,29 @@ async function fetchPlacesForCell(
     await sleep(BATCH_DELAY_MS);
   }
 
-  const shopQuery = buildShopNodeQuery(cell.lat, cell.lng, cell.radiusKm, [...SHOP_TYPES]);
-  await fetchBatch(city, `grid ${label} shops`, shopQuery, seen, places);
-  await sleep(BATCH_DELAY_MS);
+  const shopBatches = chunk([...SHOP_TYPES], NODE_BATCH_SIZE);
+  for (const batch of shopBatches) {
+    const shopNodeQuery = buildShopNodeQuery(
+      cell.lat,
+      cell.lng,
+      cell.radiusKm,
+      batch
+    );
+    await fetchBatch(
+      city,
+      `grid ${label} shop nodes: ${batch.join(", ")}`,
+      shopNodeQuery,
+      seen,
+      places
+    );
+    await sleep(BATCH_DELAY_MS);
+  }
+
+  for (const shop of SHOP_TYPES) {
+    const shopWayQuery = buildShopWayQuery(cell.lat, cell.lng, cell.radiusKm, [shop]);
+    await fetchBatch(city, `grid ${label} shop ways: ${shop}`, shopWayQuery, seen, places);
+    await sleep(BATCH_DELAY_MS);
+  }
 
   const officeQuery = buildOfficeNodeQuery(cell.lat, cell.lng, cell.radiusKm);
   await fetchBatch(city, `grid ${label} offices`, officeQuery, seen, places);
