@@ -1,4 +1,4 @@
-import { and, desc, eq, gte, inArray, like, lte, or } from "drizzle-orm";
+import { and, count, desc, eq, gte, inArray, like, lte, or } from "drizzle-orm";
 import { getDb } from "@/lib/db/client";
 import { boundingBox, haversineKm, type BoundingBox } from "@/lib/db/geo";
 import { places, reviewScores, userRatings, users } from "@/lib/db/schema";
@@ -236,6 +236,15 @@ export async function getNearbyPlaces(
 
   results = sortByScore(results, options?.sort ?? "distance");
   return results.slice(0, limit);
+}
+
+export async function getCityPlaceCount(city: string): Promise<number> {
+  const db = getDb();
+  const [row] = await db
+    .select({ value: count() })
+    .from(places)
+    .where(eq(places.city, city));
+  return row?.value ?? 0;
 }
 
 export async function searchPlaces(

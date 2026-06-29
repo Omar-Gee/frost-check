@@ -9,6 +9,7 @@ import {
   type PlaceFiltersState,
 } from "@/components/places/PlaceFilters";
 import { PlaceSearchBar } from "@/components/places/PlaceSearchBar";
+import { EmptyPlacesState } from "@/components/places/EmptyPlacesState";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import type { PlaceWithScore } from "@/lib/places/queries";
@@ -43,6 +44,7 @@ export default function HomePage() {
   });
   const [searchQuery, setSearchQuery] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
+  const [cityIndexedCount, setCityIndexedCount] = useState<number | null>(null);
 
   useEffect(() => {
     const timer = setTimeout(() => setDebouncedSearch(searchQuery.trim()), 300);
@@ -51,6 +53,30 @@ export default function HomePage() {
 
   const isSearchMode = debouncedSearch.length >= 2;
   const selectedCity = NL_CITIES.find((c) => c.name === locationLabel)?.name;
+
+  useEffect(() => {
+    if (!selectedCity) {
+      setCityIndexedCount(null);
+      return;
+    }
+
+    let cancelled = false;
+
+    fetch(`/api/places/city-count?city=${encodeURIComponent(selectedCity)}`)
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (!cancelled && data && typeof data.count === "number") {
+          setCityIndexedCount(data.count);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setCityIndexedCount(null);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedCity]);
 
   const fetchPlaces = useCallback(async () => {
     setLoading(true);
@@ -228,14 +254,12 @@ export default function HomePage() {
               </p>
             )}
             {!loading && !error && places.length === 0 && (
-              <div className="rounded-xl border border-dashed border-frost-300 p-8 text-center">
-                <p className="font-medium text-frost-800">No places found</p>
-                <p className="mt-2 text-sm text-frost-600">
-                  {isSearchMode
-                    ? "Try a different search term or clear the search."
-                    : "Try a different city, increase the radius, or check back later — place data may still be indexing."}
-                </p>
-              </div>
+              <EmptyPlacesState
+                isSearchMode={isSearchMode}
+                selectedCity={selectedCity}
+                cityIndexedCount={cityIndexedCount}
+                radius={filters.radius || "2"}
+              />
             )}
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
               {places.map((place) => (
@@ -258,6 +282,15 @@ export default function HomePage() {
               <p className="mb-2 rounded-lg bg-red-50 p-4 text-sm text-red-700 dark:bg-red-950/40 dark:text-red-300">
                 {error}
               </p>
+            )}
+            {!loading && !error && places.length === 0 && (
+              <EmptyPlacesState
+                className="mb-4 rounded-xl border border-dashed border-frost-300 p-6 text-center"
+                isSearchMode={isSearchMode}
+                selectedCity={selectedCity}
+                cityIndexedCount={cityIndexedCount}
+                radius={filters.radius || "2"}
+              />
             )}
             <PlacesMap
               places={places}
