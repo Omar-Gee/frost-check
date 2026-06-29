@@ -132,9 +132,9 @@ export default function HomePage() {
   );
 
   useEffect(() => {
-    if (view === "map") return;
+    if (view === "map" && !isSearchMode) return;
     fetchPlaces();
-  }, [fetchPlaces, view]);
+  }, [fetchPlaces, view, isSearchMode]);
 
   function useGeolocation() {
     if (!navigator.geolocation) {
@@ -249,11 +249,22 @@ export default function HomePage() {
           </TabsContent>
 
           <TabsContent value="map">
+            {loading && (
+              <div className="mb-2 flex items-center justify-center py-4">
+                <Loader2 className="h-6 w-6 animate-spin text-frost-500" />
+              </div>
+            )}
+            {error && (
+              <p className="mb-2 rounded-lg bg-red-50 p-4 text-sm text-red-700 dark:bg-red-950/40 dark:text-red-300">
+                {error}
+              </p>
+            )}
             <PlacesMap
               places={places}
               center={[location.lat, location.lng]}
               userLocation={location}
-              onBoundsChange={fetchPlacesInBounds}
+              fitToPlaces={isSearchMode}
+              onBoundsChange={isSearchMode ? undefined : fetchPlacesInBounds}
             />
           </TabsContent>
         </Tabs>

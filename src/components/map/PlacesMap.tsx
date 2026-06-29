@@ -20,6 +20,7 @@ interface PlacesMapProps {
   center: [number, number];
   userLocation: { lat: number; lng: number };
   zoom?: number;
+  fitToPlaces?: boolean;
   onBoundsChange?: (bounds: {
     minLat: number;
     maxLat: number;
@@ -68,6 +69,26 @@ function MapResizeFix() {
   return null;
 }
 
+function FitBoundsToPlaces({ places }: { places: PlaceWithScore[] }) {
+  const map = useMap();
+
+  useEffect(() => {
+    if (places.length === 0) return;
+
+    if (places.length === 1) {
+      map.setView([places[0].lat, places[0].lng], 15);
+      return;
+    }
+
+    const bounds = L.latLngBounds(
+      places.map((place) => [place.lat, place.lng] as [number, number])
+    );
+    map.fitBounds(bounds, { padding: [40, 40], maxZoom: 16 });
+  }, [map, places]);
+
+  return null;
+}
+
 function MapBoundsListener({
   onBoundsChange,
 }: {
@@ -105,6 +126,7 @@ export function PlacesMap({
   center,
   userLocation,
   zoom = 14,
+  fitToPlaces = false,
   onBoundsChange,
 }: PlacesMapProps) {
   const markers = useMemo(
@@ -138,7 +160,11 @@ export function PlacesMap({
           maxZoom={20}
         />
         <MapResizeFix />
-        <MapCenterUpdater center={center} zoom={zoom} />
+        {fitToPlaces ? (
+          <FitBoundsToPlaces places={places} />
+        ) : (
+          <MapCenterUpdater center={center} zoom={zoom} />
+        )}
         <MapBoundsListener onBoundsChange={onBoundsChange} />
         {markers.map(({ place, distanceKm, icon }) => (
           <Marker key={place.id} position={[place.lat, place.lng]} icon={icon}>
