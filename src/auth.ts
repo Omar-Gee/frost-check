@@ -11,6 +11,7 @@ import {
   users,
   verificationTokens,
 } from "@/lib/db/schema";
+import { getUserProfile, resolveDisplayName } from "@/lib/users/profile";
 
 function buildProviders() {
   const providers = [];
@@ -124,15 +125,42 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     signIn: "/login",
   },
   callbacks: {
-    async jwt({ token, user }) {
+    async jwt({ token, user, trigger }) {
       if (user?.id) {
         token.id = user.id;
       }
+
+      const userId = (token.id as string | undefined) ?? token.sub;
+      if (
+        userId &&
+        (user?.id || trigger === "update" || !("displayName" in token))
+      ) {
+        const profile = await getUserProfile(userId);
+        if (profile) {
+          token.displayName = profile.displayName;
+          token.name = profile.providerName ?? token.name;
+        }
+      }
+
       return token;
     },
     async session({ session, token }) {
       if (session.user) {
         session.user.id = (token.id as string) ?? (token.sub as string) ?? "";
+
+        const providerName =
+          (token.name as string | null | undefined)?.trim() || null;
+        const displayName =
+          (token.displayName as string | null | undefined)?.trim() || null;
+
+        session.user.providerName = providerName;
+        session.user.name =
+          resolveDisplayName({
+            displayName,
+            name: providerName,
+          }) ??
+          session.user.name ??
+          session.user.email;
       }
       return session;
     },
@@ -146,6 +174,7 @@ declare module "next-auth" {
     user: {
       id: string;
       name?: string | null;
+      providerName?: string | null;
       email?: string | null;
       image?: string | null;
     };
@@ -155,5 +184,6 @@ declare module "next-auth" {
 declare module "@auth/core/jwt" {
   interface JWT {
     id?: string;
+    displayName?: string | null;
   }
 }

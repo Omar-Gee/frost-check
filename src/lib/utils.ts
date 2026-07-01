@@ -1,5 +1,6 @@
 import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
+import { addressHasStreet, isCityOnlyAddress } from "@/lib/osm/address";
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -45,6 +46,27 @@ export function formatFrostScore(frostScore: number | null | undefined): string 
   if (frostScore == null) return "—";
   return frostScore.toFixed(1);
 }
+
+export function resolvePlaceAddress(input: {
+  address?: string | null;
+  city?: string | null;
+  lat: number;
+  lng: number;
+  country?: string | null;
+}): string {
+  const trimmed = input.address?.trim();
+  if (trimmed && addressHasStreet(trimmed, input.city, input.country)) {
+    return trimmed;
+  }
+
+  const city = input.city?.trim();
+  if (city && input.country) return `${city}, ${input.country}`;
+  if (city) return city;
+
+  return `${input.lat.toFixed(5)}, ${input.lng.toFixed(5)}`;
+}
+
+export { addressHasStreet, isCityOnlyAddress };
 
 export function scoreToColor(score: number | null | undefined): string {
   if (score == null) return "#94a3b8";

@@ -93,13 +93,10 @@ export default function PlaceDetailPage() {
         />
       </div>
 
-      {place.address && (
-        <p className="flex items-center gap-2 text-frost-600">
-          <MapPin className="h-4 w-4" />
-          {place.address}
-          {place.city && `, ${place.city}`}
-        </p>
-      )}
+      <p className="flex items-center gap-2 text-frost-600">
+        <MapPin className="h-4 w-4" />
+        {place.address}
+      </p>
 
       {place.latestSummary && (
         <Card>

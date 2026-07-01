@@ -25,6 +25,18 @@ export async function GET(request: NextRequest) {
     ? parseInt(searchParams.get("limit")!, 10)
     : 50;
 
+  const fromLatParam = searchParams.get("fromLat");
+  const fromLngParam = searchParams.get("fromLng");
+  const fromLat = fromLatParam ? parseFloat(fromLatParam) : undefined;
+  const fromLng = fromLngParam ? parseFloat(fromLngParam) : undefined;
+  const distanceFrom =
+    fromLat != null &&
+    fromLng != null &&
+    !Number.isNaN(fromLat) &&
+    !Number.isNaN(fromLng)
+      ? { lat: fromLat, lng: fromLng }
+      : undefined;
+
   if (
     (latParam && Number.isNaN(lat!)) ||
     (lngParam && Number.isNaN(lng!))
@@ -43,6 +55,7 @@ export async function GET(request: NextRequest) {
       amenity: amenity || undefined,
       minScore,
       limit,
+      distanceFrom,
     });
 
     return NextResponse.json({ places, query: q });

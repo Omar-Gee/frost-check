@@ -36,9 +36,17 @@ export default async function RootLayout({
                   <ThemeToggle />
                 {session?.user ? (
                   <>
-                    <span className="hidden text-sm text-frost-600 sm:inline">
+                    <Link
+                      href="/settings"
+                      className="hidden text-sm text-frost-600 hover:text-frost-800 sm:inline"
+                    >
                       {session.user.name ?? session.user.email}
-                    </span>
+                    </Link>
+                    <Link href="/settings">
+                      <Button type="button" variant="ghost" size="sm" className="sm:hidden">
+                        Profile
+                      </Button>
+                    </Link>
                     <form
                       action={async () => {
                         "use server";

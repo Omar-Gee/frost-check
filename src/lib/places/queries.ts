@@ -1,8 +1,10 @@
 import { and, count, desc, eq, gte, inArray, like, lte, or } from "drizzle-orm";
 import { getDb } from "@/lib/db/client";
-import { boundingBox, haversineKm, type BoundingBox } from "@/lib/db/geo";
+import { boundingBox, haversineKm, type BoundingBox, type LatLng } from "@/lib/db/geo";
 import { places, reviewScores, userRatings, users } from "@/lib/db/schema";
 import type { ReviewSnippet } from "@/lib/reviews/text-sources";
+import { resolvePlaceAddress } from "@/lib/utils";
+import { NL_CITIES } from "@/lib/osm/nl-cities";
 import {
   averageUserScore,
   computeDisplayScore,
@@ -43,7 +45,7 @@ export interface PlaceWithScore {
   amenity: string | null;
   lat: number;
   lng: number;
-  address: string | null;
+  address: string;
   city: string | null;
   wikipediaSlug: string | null;
   googleMapsUrl: string | null;
@@ -140,6 +142,11 @@ const EMPTY_SCORE_DATA: PlaceWithScore["score"] & {
   hasAc: null,
 };
 
+function countryForCity(cityName: string | null | undefined): string | null {
+  if (!cityName) return null;
+  return NL_CITIES.find((c) => c.name === cityName)?.country ?? null;
+}
+
 function enrichPlace(
   place: typeof places.$inferSelect,
   scoreData: PlaceWithScore["score"] & {
@@ -156,7 +163,13 @@ function enrichPlace(
     amenity: place.amenity,
     lat: place.lat,
     lng: place.lng,
-    address: place.address,
+    address: resolvePlaceAddress({
+      address: place.address,
+      city: place.city,
+      lat: place.lat,
+      lng: place.lng,
+      country: countryForCity(place.city),
+    }),
     city: place.city,
     wikipediaSlug: place.wikipediaSlug,
     googleMapsUrl: place.googleMapsUrl,
@@ -184,11 +197,13 @@ export async function getNearbyPlaces(
     minScore?: number;
     limit?: number;
     sort?: "distance" | "ac";
+    distanceFrom?: LatLng;
   }
 ): Promise<PlaceWithScore[]> {
   const db = getDb();
   const box = boundingBox({ lat, lng }, radiusKm);
   const limit = options?.limit ?? 50;
+  const distanceOrigin = options?.distanceFrom ?? { lat, lng };
 
   const filters = [
     gte(places.lat, box.minLat),
@@ -206,12 +221,15 @@ export async function getNearbyPlaces(
     .from(places)
     .where(and(...filters));
 
-  let filtered = rows
-    .map((p) => ({
-      place: p,
-      distanceKm: haversineKm({ lat, lng }, { lat: p.lat, lng: p.lng }),
-    }))
-    .filter((x) => x.distanceKm <= radiusKm);
+  let filtered = rows.map((p) => ({
+    place: p,
+    distanceKm: haversineKm(distanceOrigin, { lat: p.lat, lng: p.lng }),
+    queryDistanceKm: haversineKm({ lat, lng }, { lat: p.lat, lng: p.lng }),
+  }));
+
+  if (!options?.city) {
+    filtered = filtered.filter((x) => x.queryDistanceKm <= radiusKm);
+  }
 
   if (options?.amenity) {
     filtered = filtered.filter((x) => x.place.amenity === options.amenity);
@@ -256,6 +274,7 @@ export async function searchPlaces(
     amenity?: string;
     minScore?: number;
     limit?: number;
+    distanceFrom?: LatLng;
   }
 ): Promise<PlaceWithScore[]> {
   const trimmed = query.trim();
@@ -289,16 +308,17 @@ export async function searchPlaces(
   }
 
   const scoreMap = await loadScoresForPlaces(filtered.map((p) => p.id));
+  const distanceOrigin =
+    options?.distanceFrom ??
+    (options?.lat != null && options?.lng != null
+      ? { lat: options.lat, lng: options.lng }
+      : null);
 
   let results = filtered.map((place) => {
     const scoreData = scoreMap.get(place.id) ?? EMPTY_SCORE_DATA;
-    const distanceKm =
-      options?.lat != null && options?.lng != null
-        ? haversineKm(
-            { lat: options.lat, lng: options.lng },
-            { lat: place.lat, lng: place.lng }
-          )
-        : undefined;
+    const distanceKm = distanceOrigin
+      ? haversineKm(distanceOrigin, { lat: place.lat, lng: place.lng })
+      : undefined;
     return enrichPlace(place, scoreData, distanceKm);
   });
 
@@ -328,9 +348,11 @@ export async function getPlacesInBounds(
   bounds: BoundingBox,
   options?: {
     amenity?: string;
+    city?: string;
     minScore?: number;
     limit?: number;
     sort?: "distance" | "ac";
+    distanceFrom?: LatLng;
   }
 ): Promise<PlaceWithScore[]> {
   const db = getDb();
@@ -347,9 +369,12 @@ export async function getPlacesInBounds(
         lte(places.lng, bounds.maxLng)
       )
     )
-    .limit(limit);
+    .limit(limit * 2);
 
   let filtered = rows;
+  if (options?.city) {
+    filtered = filtered.filter((p) => p.city === options.city);
+  }
   if (options?.amenity) {
     filtered = filtered.filter((p) => p.amenity === options.amenity);
   }
@@ -358,7 +383,10 @@ export async function getPlacesInBounds(
 
   let results = filtered.map((place) => {
     const scoreData = scoreMap.get(place.id) ?? EMPTY_SCORE_DATA;
-    return enrichPlace(place, scoreData);
+    const distanceKm = options?.distanceFrom
+      ? haversineKm(options.distanceFrom, { lat: place.lat, lng: place.lng })
+      : undefined;
+    return enrichPlace(place, scoreData, distanceKm);
   });
 
   if (options?.minScore != null) {

@@ -17,6 +17,18 @@ export async function GET(request: NextRequest) {
     ? parseInt(searchParams.get("limit")!, 10)
     : 50;
 
+  const fromLatParam = searchParams.get("fromLat");
+  const fromLngParam = searchParams.get("fromLng");
+  const fromLat = fromLatParam ? parseFloat(fromLatParam) : undefined;
+  const fromLng = fromLngParam ? parseFloat(fromLngParam) : undefined;
+  const distanceFrom =
+    fromLat != null &&
+    fromLng != null &&
+    !Number.isNaN(fromLat) &&
+    !Number.isNaN(fromLng)
+      ? { lat: fromLat, lng: fromLng }
+      : undefined;
+
   if (Number.isNaN(lat) || Number.isNaN(lng)) {
     return NextResponse.json(
       { error: "lat and lng are required" },
@@ -31,6 +43,7 @@ export async function GET(request: NextRequest) {
       minScore,
       limit,
       sort,
+      distanceFrom,
     });
 
     return NextResponse.json({ places });

@@ -7,6 +7,7 @@ import {
   type NlCity,
   type ShopType,
 } from "./nl-cities";
+import { parseAddressFromTags } from "./address";
 
 export interface OsmPlace {
   id: string;
@@ -173,14 +174,8 @@ interface OverpassResponse {
   elements: OverpassElement[];
 }
 
-function parseAddress(tags: Record<string, string>): string | null {
-  const parts = [
-    tags["addr:street"],
-    tags["addr:housenumber"],
-    tags["addr:postcode"],
-    tags["addr:city"],
-  ].filter(Boolean);
-  return parts.length > 0 ? parts.join(" ") : null;
+function parseAddress(tags: Record<string, string>, city: NlCity): string {
+  return parseAddressFromTags(tags, city);
 }
 
 function parseWikipediaSlug(tags: Record<string, string>): string | null {
@@ -227,7 +222,7 @@ function elementToPlace(el: OverpassElement, city: NlCity): OsmPlace | null {
     amenity,
     lat,
     lng,
-    address: parseAddress(tags),
+    address: parseAddress(tags, city),
     wikipediaSlug: parseWikipediaSlug(tags),
     osmText: osmText || null,
     website: tags.website ?? tags["contact:website"] ?? null,
@@ -302,6 +297,23 @@ async function fetchOverpass(query: string): Promise<Response> {
   }
 
   throw lastError ?? new Error("Overpass API error: no endpoints available");
+}
+
+export async function fetchOsmTags(
+  osmType: string,
+  osmId: string
+): Promise<Record<string, string> | null> {
+  const type =
+    osmType === "relation" ? "relation" : osmType === "way" ? "way" : "node";
+  const query = `[out:json][timeout:30]; ${type}(${osmId}); out tags;`;
+
+  try {
+    const response = await fetchOverpass(query);
+    const data = (await response.json()) as OverpassResponse;
+    return data.elements[0]?.tags ?? null;
+  } catch {
+    return null;
+  }
 }
 
 async function fetchBatch(

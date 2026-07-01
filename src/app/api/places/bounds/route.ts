@@ -30,6 +30,7 @@ export async function GET(request: NextRequest) {
   const { searchParams } = request.nextUrl;
   const { minLat, maxLat, minLng, maxLng } = parseBounds(searchParams);
   const amenity = searchParams.get("amenity") ?? undefined;
+  const city = searchParams.get("city") ?? undefined;
   const sortParam = searchParams.get("sort");
   const sort = sortParam === "distance" ? "distance" : "ac";
   const minScore = searchParams.get("minScore")
@@ -38,6 +39,18 @@ export async function GET(request: NextRequest) {
   const limit = searchParams.get("limit")
     ? parseInt(searchParams.get("limit")!, 10)
     : 100;
+
+  const fromLatParam = searchParams.get("fromLat");
+  const fromLngParam = searchParams.get("fromLng");
+  const fromLat = fromLatParam ? parseFloat(fromLatParam) : undefined;
+  const fromLng = fromLngParam ? parseFloat(fromLngParam) : undefined;
+  const distanceFrom =
+    fromLat != null &&
+    fromLng != null &&
+    !Number.isNaN(fromLat) &&
+    !Number.isNaN(fromLng)
+      ? { lat: fromLat, lng: fromLng }
+      : undefined;
 
   if ([minLat, maxLat, minLng, maxLng].some((v) => Number.isNaN(v))) {
     return NextResponse.json(
@@ -52,7 +65,14 @@ export async function GET(request: NextRequest) {
   try {
     const places = await getPlacesInBounds(
       { minLat, maxLat, minLng, maxLng },
-      { amenity: amenity || undefined, minScore, limit, sort }
+      {
+        amenity: amenity || undefined,
+        city: city || undefined,
+        minScore,
+        limit,
+        sort,
+        distanceFrom,
+      }
     );
 
     return NextResponse.json({ places });

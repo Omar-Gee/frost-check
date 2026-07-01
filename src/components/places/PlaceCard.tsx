@@ -9,10 +9,9 @@ import type { PlaceWithScore } from "@/lib/places/queries";
 
 interface PlaceCardProps {
   place: PlaceWithScore;
-  showCity?: boolean;
 }
 
-export function PlaceCard({ place, showCity }: PlaceCardProps) {
+export function PlaceCard({ place }: PlaceCardProps) {
   const encodedId = encodeURIComponent(place.id);
 
   return (
@@ -35,14 +34,10 @@ export function PlaceCard({ place, showCity }: PlaceCardProps) {
               {AMENITY_LABELS[place.amenity] ?? place.amenity}
             </Badge>
           )}
-          {(place.address || (showCity && place.city)) && (
-            <p className="flex items-center gap-1 text-sm text-frost-600">
-              <MapPin className="h-3.5 w-3.5 shrink-0" />
-              {[place.address, showCity && place.city ? place.city : null]
-                .filter(Boolean)
-                .join(" · ")}
-            </p>
-          )}
+          <p className="flex items-center gap-1 text-sm text-frost-600">
+            <MapPin className="h-3.5 w-3.5 shrink-0" />
+            {place.address}
+          </p>
           {place.distanceKm != null && (
             <p className="text-xs text-frost-500">
               {formatDistanceKm(place.distanceKm)} away

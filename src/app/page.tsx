@@ -1,7 +1,7 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Loader2, Map, List, LocateFixed, Snowflake } from "lucide-react";
 import { PlaceCard } from "@/components/places/PlaceCard";
 import {
@@ -14,6 +14,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import type { PlaceWithScore } from "@/lib/places/queries";
 import { NL_CITIES } from "@/lib/osm/nl-cities";
+import type { LatLng } from "@/lib/db/geo";
 
 const PlacesMap = dynamic(
   () => import("@/components/map/PlacesMap").then((m) => m.PlacesMap),
@@ -27,14 +28,24 @@ const PlacesMap = dynamic(
   }
 );
 
-const DEFAULT_CENTER = { lat: 52.3676, lng: 4.9041 };
+const DEFAULT_CENTER: LatLng = { lat: 52.3676, lng: 4.9041 };
+
+type GeoStatus = "loading" | "granted" | "denied" | "unsupported";
+
+function appendDistanceFrom(params: URLSearchParams, origin: LatLng | null) {
+  if (origin) {
+    params.set("fromLat", String(origin.lat));
+    params.set("fromLng", String(origin.lng));
+  }
+}
 
 export default function HomePage() {
   const [places, setPlaces] = useState<PlaceWithScore[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [location, setLocation] = useState(DEFAULT_CENTER);
-  const [locationLabel, setLocationLabel] = useState("Amsterdam");
+  const [userLocation, setUserLocation] = useState<LatLng | null>(null);
+  const [geoStatus, setGeoStatus] = useState<GeoStatus>("loading");
+  const [selectedCitySlug, setSelectedCitySlug] = useState<string | null>(null);
   const [view, setView] = useState<"list" | "map">("list");
   const [filters, setFilters] = useState<PlaceFiltersState>({
     amenity: "",
@@ -46,13 +57,44 @@ export default function HomePage() {
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [cityIndexedCount, setCityIndexedCount] = useState<number | null>(null);
 
+  const browseCity = useMemo(
+    () => NL_CITIES.find((c) => c.slug === selectedCitySlug) ?? null,
+    [selectedCitySlug]
+  );
+
+  const queryCenter = browseCity ?? userLocation ?? DEFAULT_CENTER;
+  const queryRadius = browseCity
+    ? String(browseCity.radiusKm)
+    : filters.radius || "2";
+  const distanceOrigin = userLocation;
+  const mapCenter: [number, number] = [queryCenter.lat, queryCenter.lng];
+  const mapUserLocation = userLocation ?? queryCenter;
+
   useEffect(() => {
     const timer = setTimeout(() => setDebouncedSearch(searchQuery.trim()), 300);
     return () => clearTimeout(timer);
   }, [searchQuery]);
 
+  useEffect(() => {
+    if (!navigator.geolocation) {
+      setGeoStatus("unsupported");
+      return;
+    }
+
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        setUserLocation({
+          lat: pos.coords.latitude,
+          lng: pos.coords.longitude,
+        });
+        setGeoStatus("granted");
+      },
+      () => setGeoStatus("denied")
+    );
+  }, []);
+
   const isSearchMode = debouncedSearch.length >= 2;
-  const selectedCity = NL_CITIES.find((c) => c.name === locationLabel)?.name;
+  const selectedCity = browseCity?.name;
 
   useEffect(() => {
     if (!selectedCity) {
@@ -86,9 +128,10 @@ export default function HomePage() {
       if (isSearchMode) {
         const params = new URLSearchParams({
           q: debouncedSearch,
-          lat: String(location.lat),
-          lng: String(location.lng),
+          lat: String(queryCenter.lat),
+          lng: String(queryCenter.lng),
         });
+        appendDistanceFrom(params, distanceOrigin);
         if (selectedCity) params.set("city", selectedCity);
         if (filters.amenity) params.set("amenity", filters.amenity);
         if (filters.minScore) params.set("minScore", filters.minScore);
@@ -101,11 +144,12 @@ export default function HomePage() {
       }
 
       const params = new URLSearchParams({
-        lat: String(location.lat),
-        lng: String(location.lng),
-        radius: filters.radius || "2",
+        lat: String(queryCenter.lat),
+        lng: String(queryCenter.lng),
+        radius: queryRadius,
         sort: filters.sort,
       });
+      appendDistanceFrom(params, distanceOrigin);
       if (selectedCity) params.set("city", selectedCity);
       if (filters.amenity) params.set("amenity", filters.amenity);
       if (filters.minScore) params.set("minScore", filters.minScore);
@@ -120,7 +164,15 @@ export default function HomePage() {
     } finally {
       setLoading(false);
     }
-  }, [location, filters, debouncedSearch, isSearchMode, selectedCity]);
+  }, [
+    queryCenter,
+    queryRadius,
+    distanceOrigin,
+    filters,
+    debouncedSearch,
+    isSearchMode,
+    selectedCity,
+  ]);
 
   const fetchPlacesInBounds = useCallback(
     async (bounds: {
@@ -139,6 +191,8 @@ export default function HomePage() {
         maxLng: String(bounds.maxLng),
         sort: filters.sort,
       });
+      appendDistanceFrom(params, distanceOrigin);
+      if (selectedCity) params.set("city", selectedCity);
       if (filters.amenity) params.set("amenity", filters.amenity);
       if (filters.minScore) params.set("minScore", filters.minScore);
 
@@ -154,7 +208,7 @@ export default function HomePage() {
         setLoading(false);
       }
     },
-    [filters]
+    [filters, distanceOrigin, selectedCity]
   );
 
   useEffect(() => {
@@ -165,30 +219,42 @@ export default function HomePage() {
   function useGeolocation() {
     if (!navigator.geolocation) {
       setError("Geolocation is not supported by your browser");
+      setGeoStatus("unsupported");
       return;
     }
 
-    setLoading(true);
+    setGeoStatus("loading");
     navigator.geolocation.getCurrentPosition(
       (pos) => {
-        setLocation({ lat: pos.coords.latitude, lng: pos.coords.longitude });
-        setLocationLabel("Your location");
-        setLoading(false);
+        setUserLocation({
+          lat: pos.coords.latitude,
+          lng: pos.coords.longitude,
+        });
+        setSelectedCitySlug(null);
+        setGeoStatus("granted");
       },
       () => {
+        setGeoStatus("denied");
         setError("Could not determine your location");
-        setLoading(false);
       }
     );
   }
 
   function selectCity(slug: string) {
-    const city = NL_CITIES.find((c) => c.slug === slug);
-    if (city) {
-      setLocation({ lat: city.lat, lng: city.lng });
-      setLocationLabel(city.name);
-    }
+    setSelectedCitySlug((current) => (current === slug ? null : slug));
   }
+
+  const locationSummary = browseCity
+    ? `Browsing ${browseCity.name}${
+        userLocation ? " · distances from your location" : ""
+      }`
+    : geoStatus === "loading"
+      ? "Detecting your location…"
+      : userLocation
+        ? "Showing places near you"
+        : geoStatus === "denied"
+          ? "Location unavailable — enable in browser or pick a city"
+          : "Showing places near Amsterdam";
 
   return (
     <div className="space-y-6">
@@ -207,14 +273,18 @@ export default function HomePage() {
 
       <section className="space-y-4">
         <div className="flex flex-wrap items-center gap-2">
-          <Button variant="secondary" size="sm" onClick={useGeolocation}>
+          <Button
+            variant={!browseCity ? "secondary" : "outline"}
+            size="sm"
+            onClick={useGeolocation}
+          >
             <LocateFixed className="h-4 w-4" />
             Use my location
           </Button>
           {NL_CITIES.map((city) => (
             <Button
               key={city.slug}
-              variant="outline"
+              variant={selectedCitySlug === city.slug ? "secondary" : "outline"}
               size="sm"
               onClick={() => selectCity(city.slug)}
             >
@@ -222,13 +292,15 @@ export default function HomePage() {
             </Button>
           ))}
         </div>
-        <p className="text-sm text-frost-600">
-          Current location: <strong>{locationLabel}</strong>
-        </p>
+        <p className="text-sm text-frost-600">{locationSummary}</p>
 
         <PlaceSearchBar value={searchQuery} onChange={setSearchQuery} />
 
-        <PlaceFilters filters={filters} onChange={setFilters} />
+        <PlaceFilters
+          filters={filters}
+          onChange={setFilters}
+          hideRadius={Boolean(browseCity)}
+        />
 
         <Tabs value={view} onValueChange={(v) => setView(v as "list" | "map")}>
           <TabsList>
@@ -258,16 +330,12 @@ export default function HomePage() {
                 isSearchMode={isSearchMode}
                 selectedCity={selectedCity}
                 cityIndexedCount={cityIndexedCount}
-                radius={filters.radius || "2"}
+                radius={queryRadius}
               />
             )}
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
               {places.map((place) => (
-                <PlaceCard
-                  key={place.id}
-                  place={place}
-                  showCity={isSearchMode}
-                />
+                <PlaceCard key={place.id} place={place} />
               ))}
             </div>
           </TabsContent>
@@ -289,13 +357,13 @@ export default function HomePage() {
                 isSearchMode={isSearchMode}
                 selectedCity={selectedCity}
                 cityIndexedCount={cityIndexedCount}
-                radius={filters.radius || "2"}
+                radius={queryRadius}
               />
             )}
             <PlacesMap
               places={places}
-              center={[location.lat, location.lng]}
-              userLocation={location}
+              center={mapCenter}
+              userLocation={mapUserLocation}
               fitToPlaces={isSearchMode}
               onBoundsChange={isSearchMode ? undefined : fetchPlacesInBounds}
             />

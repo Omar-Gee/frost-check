@@ -14,6 +14,7 @@ export interface PlaceFiltersState {
 interface PlaceFiltersProps {
   filters: PlaceFiltersState;
   onChange: (filters: PlaceFiltersState) => void;
+  hideRadius?: boolean;
 }
 
 const RADIUS_PRESETS = [
@@ -24,7 +25,7 @@ const RADIUS_PRESETS = [
   { value: "20", label: "20 km" },
 ];
 
-export function PlaceFilters({ filters, onChange }: PlaceFiltersProps) {
+export function PlaceFilters({ filters, onChange, hideRadius }: PlaceFiltersProps) {
   return (
     <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
       <div>
@@ -43,21 +44,23 @@ export function PlaceFilters({ filters, onChange }: PlaceFiltersProps) {
         </select>
       </div>
 
-      <div>
-        <Label htmlFor="radius">Radius</Label>
-        <select
-          id="radius"
-          value={filters.radius}
-          onChange={(e) => onChange({ ...filters, radius: e.target.value })}
-          className="mt-1 flex h-10 w-full rounded-lg border border-frost-300 bg-card px-3 text-sm text-frost-900 focus:outline-none focus:ring-2 focus:ring-frost-500"
-        >
-          {RADIUS_PRESETS.map((preset) => (
-            <option key={preset.value} value={preset.value}>
-              {preset.label}
-            </option>
-          ))}
-        </select>
-      </div>
+      {!hideRadius && (
+        <div>
+          <Label htmlFor="radius">Radius</Label>
+          <select
+            id="radius"
+            value={filters.radius}
+            onChange={(e) => onChange({ ...filters, radius: e.target.value })}
+            className="mt-1 flex h-10 w-full rounded-lg border border-frost-300 bg-card px-3 text-sm text-frost-900 focus:outline-none focus:ring-2 focus:ring-frost-500"
+          >
+            {RADIUS_PRESETS.map((preset) => (
+              <option key={preset.value} value={preset.value}>
+                {preset.label}
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
 
       <div>
         <Label htmlFor="sort">Sort by</Label>
