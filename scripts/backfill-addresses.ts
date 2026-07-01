@@ -5,10 +5,8 @@ import { places } from "@/lib/db/schema";
 import {
   addressHasStreet,
   formatNominatimAddress,
-  parseAddressFromTags,
 } from "@/lib/osm/address";
 import { NL_CITIES, type NlCity } from "@/lib/osm/nl-cities";
-import { fetchOsmTags } from "@/lib/osm/overpass";
 import { resolvePlaceAddress } from "@/lib/utils";
 
 const NOMINATIM_HEADERS = {
@@ -35,6 +33,24 @@ function cityConfig(cityName: string | null | undefined): NlCity {
   );
 }
 
+function parseArgs() {
+  const args = process.argv.slice(2);
+  let limit: number | null = null;
+  let city: string | null = null;
+
+  for (let i = 0; i < args.length; i++) {
+    if (args[i] === "--limit") {
+      limit = Number(args[i + 1]);
+      i++;
+    } else if (args[i] === "--city") {
+      city = args[i + 1] ?? null;
+      i++;
+    }
+  }
+
+  return { limit, city };
+}
+
 async function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -45,6 +61,7 @@ async function reverseGeocode(
   city: NlCity
 ): Promise<string | null> {
   await sleep(1100);
+
   const url = new URL("https://nominatim.openstreetmap.org/reverse");
   url.searchParams.set("lat", String(lat));
   url.searchParams.set("lon", String(lng));
@@ -75,15 +92,6 @@ async function resolveAddressForPlace(row: typeof places.$inferSelect) {
     return row.address;
   }
 
-  const tags = await fetchOsmTags(row.osmType, row.osmId);
-  if (tags) {
-    const fromOsm = parseAddressFromTags(tags, city);
-    if (addressHasStreet(fromOsm, row.city, country)) {
-      return fromOsm;
-    }
-  }
-
-  await sleep(500);
   const fromNominatim = await reverseGeocode(row.lat, row.lng, city);
   if (fromNominatim && addressHasStreet(fromNominatim, row.city, country)) {
     return fromNominatim;
@@ -99,14 +107,34 @@ async function resolveAddressForPlace(row: typeof places.$inferSelect) {
 }
 
 async function main() {
+  const { limit, city } = parseArgs();
   const db = getDb();
-  const rows = await db.select().from(places);
+  let rows = await db.select().from(places);
+
+  if (city) {
+    rows = rows.filter((row) => row.city === city);
+  }
+
   let updated = 0;
   let withStreet = 0;
   let missingStreet = 0;
+  let processedMissing = 0;
 
   for (const row of rows) {
     const country = countryForCity(row.city);
+    const alreadyHasStreet = addressHasStreet(row.address, row.city, country);
+
+    if (alreadyHasStreet) {
+      withStreet++;
+      continue;
+    }
+
+    if (limit != null && processedMissing >= limit) {
+      missingStreet++;
+      continue;
+    }
+
+    processedMissing++;
     const nextAddress = await resolveAddressForPlace(row);
 
     if (addressHasStreet(nextAddress, row.city, country)) {
@@ -123,8 +151,10 @@ async function main() {
       updated++;
     }
 
-    if (rows.length > 100 && updated % 25 === 0 && updated > 0) {
-      console.log(`Progress: ${updated} updated…`);
+    if (processedMissing % 10 === 0) {
+      console.log(
+        `Progress: ${processedMissing} geocoded, ${updated} updated, ${withStreet} with street so far`
+      );
     }
   }
 
