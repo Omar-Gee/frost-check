@@ -15,6 +15,12 @@ import { Button } from "@/components/ui/button";
 import type { PlaceWithScore } from "@/lib/places/queries";
 import { NL_CITIES } from "@/lib/osm/nl-cities";
 import type { LatLng } from "@/lib/db/geo";
+import {
+  DEFAULT_FILTERS,
+  loadBrowseState,
+  saveBrowseState,
+  type GeoStatus,
+} from "@/lib/browse/session-state";
 
 const PlacesMap = dynamic(
   () => import("@/components/map/PlacesMap").then((m) => m.PlacesMap),
@@ -29,8 +35,6 @@ const PlacesMap = dynamic(
 );
 
 const DEFAULT_CENTER: LatLng = { lat: 52.3676, lng: 4.9041 };
-
-type GeoStatus = "loading" | "granted" | "denied" | "unsupported";
 
 function appendDistanceFrom(params: URLSearchParams, origin: LatLng | null) {
   if (origin) {
@@ -47,15 +51,11 @@ export default function HomePage() {
   const [geoStatus, setGeoStatus] = useState<GeoStatus>("loading");
   const [selectedCitySlug, setSelectedCitySlug] = useState<string | null>(null);
   const [view, setView] = useState<"list" | "map">("list");
-  const [filters, setFilters] = useState<PlaceFiltersState>({
-    amenity: "",
-    minScore: "",
-    radius: "2",
-    sort: "ac",
-  });
+  const [filters, setFilters] = useState<PlaceFiltersState>(DEFAULT_FILTERS);
   const [searchQuery, setSearchQuery] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [cityIndexedCount, setCityIndexedCount] = useState<number | null>(null);
+  const [sessionReady, setSessionReady] = useState(false);
 
   const browseCity = useMemo(
     () => NL_CITIES.find((c) => c.slug === selectedCitySlug) ?? null,
@@ -71,13 +71,23 @@ export default function HomePage() {
   const mapUserLocation = userLocation ?? queryCenter;
 
   useEffect(() => {
-    const timer = setTimeout(() => setDebouncedSearch(searchQuery.trim()), 300);
-    return () => clearTimeout(timer);
-  }, [searchQuery]);
+    const saved = loadBrowseState();
 
-  useEffect(() => {
+    if (saved) {
+      setUserLocation(saved.userLocation);
+      setGeoStatus(saved.geoStatus);
+      setSelectedCitySlug(saved.selectedCitySlug);
+      setView(saved.view);
+      setFilters(saved.filters);
+      setSearchQuery(saved.searchQuery);
+      setDebouncedSearch(saved.searchQuery.trim());
+      setSessionReady(true);
+      return;
+    }
+
     if (!navigator.geolocation) {
       setGeoStatus("unsupported");
+      setSessionReady(true);
       return;
     }
 
@@ -88,10 +98,40 @@ export default function HomePage() {
           lng: pos.coords.longitude,
         });
         setGeoStatus("granted");
+        setSessionReady(true);
       },
-      () => setGeoStatus("denied")
+      () => {
+        setGeoStatus("denied");
+        setSessionReady(true);
+      }
     );
   }, []);
+
+  useEffect(() => {
+    if (!sessionReady) return;
+
+    saveBrowseState({
+      userLocation,
+      geoStatus,
+      selectedCitySlug,
+      view,
+      filters,
+      searchQuery,
+    });
+  }, [
+    sessionReady,
+    userLocation,
+    geoStatus,
+    selectedCitySlug,
+    view,
+    filters,
+    searchQuery,
+  ]);
+
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedSearch(searchQuery.trim()), 300);
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
 
   const isSearchMode = debouncedSearch.length >= 2;
   const selectedCity = browseCity?.name;
@@ -212,9 +252,10 @@ export default function HomePage() {
   );
 
   useEffect(() => {
+    if (!sessionReady) return;
     if (view === "map" && !isSearchMode) return;
     fetchPlaces();
-  }, [fetchPlaces, view, isSearchMode]);
+  }, [fetchPlaces, view, isSearchMode, sessionReady]);
 
   function useGeolocation() {
     if (!navigator.geolocation) {
