@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useSession } from "next-auth/react";
+import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -9,6 +10,7 @@ import type { UserProfile } from "@/lib/users/profile";
 
 export function ProfileForm() {
   const { data: session, update } = useSession();
+  const router = useRouter();
   const [displayName, setDisplayName] = useState("");
   const [providerName, setProviderName] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -72,6 +74,7 @@ export function ProfileForm() {
       setDisplayName(profile.displayName ?? "");
       setProviderName(profile.providerName);
       await update();
+      router.refresh();
       setSuccess("Display name updated.");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not save profile");

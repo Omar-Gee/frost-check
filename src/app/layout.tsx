@@ -3,6 +3,7 @@ import Link from "next/link";
 import { Snowflake } from "lucide-react";
 import { auth, signOut } from "@/auth";
 import { SessionProvider } from "@/components/providers/session-provider";
+import { UserNavName } from "@/components/auth/user-nav-name";
 import { ThemeProvider } from "@/components/providers/theme-provider";
 import { ThemeToggle } from "@/components/theme/theme-toggle";
 import { Button } from "@/components/ui/button";
@@ -36,12 +37,7 @@ export default async function RootLayout({
                   <ThemeToggle />
                 {session?.user ? (
                   <>
-                    <Link
-                      href="/settings"
-                      className="hidden text-sm text-frost-600 hover:text-frost-800 sm:inline"
-                    >
-                      {session.user.name ?? session.user.email}
-                    </Link>
+                    <UserNavName />
                     <Link href="/settings">
                       <Button type="button" variant="ghost" size="sm" className="sm:hidden">
                         Profile
