@@ -9,6 +9,7 @@ import { getDb } from "@/lib/db/client";
 import { indexJobs, places, reviewScores } from "@/lib/db/schema";
 import { NL_CITIES } from "@/lib/osm/nl-cities";
 import { fetchPlacesForCity } from "@/lib/osm/overpass";
+import { resolveIndexedAddress } from "@/lib/osm/resolve-address";
 import { buildGoogleMapsSearchUrl } from "@/lib/reviews/text-sources";
 import { fetchWikipediaExtract } from "@/lib/reviews/wikipedia";
 
@@ -65,6 +66,13 @@ async function main() {
         .where(eq(indexJobs.id, job.id));
 
       for (const osmPlace of osmPlaces) {
+        const address = await resolveIndexedAddress({
+          address: osmPlace.address,
+          lat: osmPlace.lat,
+          lng: osmPlace.lng,
+          city,
+        });
+
         const googleMapsUrl = buildGoogleMapsSearchUrl(
           osmPlace.name,
           city.name,
@@ -81,7 +89,7 @@ async function main() {
             amenity: osmPlace.amenity,
             lat: osmPlace.lat,
             lng: osmPlace.lng,
-            address: osmPlace.address,
+            address,
             city: city.name,
             wikipediaSlug: osmPlace.wikipediaSlug,
             website: osmPlace.website,
@@ -95,7 +103,7 @@ async function main() {
               amenity: osmPlace.amenity,
               lat: osmPlace.lat,
               lng: osmPlace.lng,
-              address: osmPlace.address,
+              address,
               wikipediaSlug: osmPlace.wikipediaSlug,
               website: osmPlace.website,
               phone: osmPlace.phone,
@@ -116,7 +124,7 @@ async function main() {
             amenity: osmPlace.amenity,
             osmText: osmPlace.osmText,
             wikipediaText: wikiText,
-            address: osmPlace.address,
+            address,
           });
         } catch (error) {
           const message = error instanceof Error ? error.message : String(error);

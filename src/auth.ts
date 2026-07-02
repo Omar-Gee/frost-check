@@ -66,10 +66,12 @@ function buildProviders() {
                 .where(eq(users.id, existing.id));
             }
 
+            const resolvedName = resolveDisplayName(existing);
+
             return {
               id: existing.id,
               email: existing.email,
-              name: name || existing.name,
+              name: resolvedName || name || existing.name,
               image: existing.image,
             };
           }

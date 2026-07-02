@@ -4,6 +4,7 @@ import { boundingBox, haversineKm, type BoundingBox, type LatLng } from "@/lib/d
 import { places, reviewScores, userRatings, users } from "@/lib/db/schema";
 import type { ReviewSnippet } from "@/lib/reviews/text-sources";
 import { resolvePlaceAddress } from "@/lib/utils";
+import { resolveDisplayName } from "@/lib/users/profile";
 import { NL_CITIES } from "@/lib/osm/nl-cities";
 import {
   averageUserScore,
@@ -431,7 +432,8 @@ export async function getPlaceDetail(id: string): Promise<PlaceDetail | null> {
       rating: userRatings.rating,
       comment: userRatings.comment,
       createdAt: userRatings.createdAt,
-      userName: users.name,
+      providerName: users.name,
+      displayName: users.displayName,
     })
     .from(userRatings)
     .leftJoin(users, eq(userRatings.userId, users.id))
@@ -447,7 +449,10 @@ export async function getPlaceDetail(id: string): Promise<PlaceDetail | null> {
       rating: r.rating,
       comment: r.comment,
       createdAt: r.createdAt,
-      userName: r.userName,
+      userName: resolveDisplayName({
+        displayName: r.displayName,
+        name: r.providerName,
+      }),
     })),
     aiHistory: aiHistory.map((h) => ({
       score: h.score,

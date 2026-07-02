@@ -2,18 +2,9 @@ import "dotenv/config";
 import { eq } from "drizzle-orm";
 import { getDb } from "@/lib/db/client";
 import { places } from "@/lib/db/schema";
-import {
-  addressHasStreet,
-  formatNominatimAddress,
-} from "@/lib/osm/address";
+import { addressHasStreet } from "@/lib/osm/address";
 import { NL_CITIES, type NlCity } from "@/lib/osm/nl-cities";
-import { resolvePlaceAddress } from "@/lib/utils";
-
-const NOMINATIM_HEADERS = {
-  Accept: "application/json",
-  "User-Agent":
-    "FrostCheck/1.0 (https://github.com/Omar-Gee/frost-check; contact: dev@frostcheck.local)",
-};
+import { resolveIndexedAddress } from "@/lib/osm/resolve-address";
 
 function countryForCity(cityName: string | null | undefined): string | null {
   if (!cityName) return null;
@@ -51,61 +42,6 @@ function parseArgs() {
   return { limit, city };
 }
 
-async function sleep(ms: number) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-async function reverseGeocode(
-  lat: number,
-  lng: number,
-  city: NlCity
-): Promise<string | null> {
-  await sleep(1100);
-
-  const url = new URL("https://nominatim.openstreetmap.org/reverse");
-  url.searchParams.set("lat", String(lat));
-  url.searchParams.set("lon", String(lng));
-  url.searchParams.set("format", "json");
-  url.searchParams.set("addressdetails", "1");
-  url.searchParams.set("zoom", "18");
-
-  try {
-    const response = await fetch(url, { headers: NOMINATIM_HEADERS });
-    if (!response.ok) return null;
-
-    const data = (await response.json()) as {
-      address?: Record<string, string>;
-    };
-
-    if (!data.address) return null;
-    return formatNominatimAddress(data.address, city);
-  } catch {
-    return null;
-  }
-}
-
-async function resolveAddressForPlace(row: typeof places.$inferSelect) {
-  const country = countryForCity(row.city);
-  const city = cityConfig(row.city);
-
-  if (addressHasStreet(row.address, row.city, country)) {
-    return row.address;
-  }
-
-  const fromNominatim = await reverseGeocode(row.lat, row.lng, city);
-  if (fromNominatim && addressHasStreet(fromNominatim, row.city, country)) {
-    return fromNominatim;
-  }
-
-  return resolvePlaceAddress({
-    address: row.address,
-    city: row.city,
-    lat: row.lat,
-    lng: row.lng,
-    country,
-  });
-}
-
 async function main() {
   const { limit, city } = parseArgs();
   const db = getDb();
@@ -135,7 +71,12 @@ async function main() {
     }
 
     processedMissing++;
-    const nextAddress = await resolveAddressForPlace(row);
+    const nextAddress = await resolveIndexedAddress({
+      address: row.address,
+      lat: row.lat,
+      lng: row.lng,
+      city: cityConfig(row.city),
+    });
 
     if (addressHasStreet(nextAddress, row.city, country)) {
       withStreet++;
